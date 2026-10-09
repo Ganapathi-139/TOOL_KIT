@@ -1,0 +1,120 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
+
+/* ─── Design Tokens ────────────────────────────────────────────────────── */
+:root {
+  /* Amber */
+  --amber-primary:   #C87B3A;
+  --amber-hover:     #B56E33;
+  --amber-tint:      #FAF4EE;
+  --amber-dark:      #D4893F;   /* slightly brighter for dark bg */
+
+  /* Light surfaces */
+  --bg-warm:         #FAF8F5;
+  --surface:         #FFFFFF;
+  --surface-tinted:  #F5F2EE;
+  --border-warm:     #E8E3DC;
+  --text-primary:    #1A1714;
+  --text-secondary:  #6B6460;
+  --text-muted:      #9C9490;
+
+  /* Dark surfaces */
+  --dark-bg:         #18160F;
+  --dark-surface:    #221F17;
+  --dark-surface-alt:#2A2720;
+  --dark-border:     #3A3528;
+  --dark-text:       #F5F0E8;
+  --dark-text-2:     #B8AFA4;
+  --dark-text-muted: #857D74;
+}
+
+@theme inline {
+  --font-headline: 'Bricolage Grotesque', sans-serif;
+  --font-body:     'DM Sans', sans-serif;
+
+  /* Colour tokens exposed to Tailwind */
+  --color-amber:           var(--amber-primary);
+  --color-amber-hover:     var(--amber-hover);
+  --color-amber-tint:      var(--amber-tint);
+  --color-bg-warm:         var(--bg-warm);
+  --color-surface:         var(--surface);
+  --color-surface-tinted:  var(--surface-tinted);
+  --color-border-warm:     var(--border-warm);
+  --color-text-primary:    var(--text-primary);
+  --color-text-secondary:  var(--text-secondary);
+  --color-text-muted:      var(--text-muted);
+}
+
+/* ─── Dark mode theme override ─────────────────────────────────────────── */
+.dark {
+  --bg-warm:        var(--dark-bg);
+  --surface:        var(--dark-surface);
+  --surface-tinted: var(--dark-surface-alt);
+  --border-warm:    var(--dark-border);
+  --text-primary:   var(--dark-text);
+  --text-secondary: var(--dark-text-2);
+  --text-muted:     var(--dark-text-muted);
+  --amber-primary:  var(--amber-dark);
+  --amber-tint:     #2A2010;
+}
+
+/* ─── Base styles ───────────────────────────────────────────────────────── */
+html { scroll-behavior: smooth; }
+
+body {
+  background-color: var(--bg-warm);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+::selection {
+  background-color: var(--amber-primary);
+  color: #fff;
+}
+
+/* ─── Typography helpers ────────────────────────────────────────────────── */
+.font-headline { font-family: var(--font-headline); }
+.font-body     { font-family: var(--font-body); }
+
+/* ─── Reduced motion ────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── Focus ring ────────────────────────────────────────────────────────── */
+*:focus-visible {
+  outline: 2px solid var(--amber-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─── Scrollbar utility ─────────────────────────────────────────────────── */
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ─── Card hover ────────────────────────────────────────────────────────── */
+.card-hover {
+  transition: border-color 200ms ease-out, transform 200ms ease-out, box-shadow 200ms ease-out;
+}
+.card-hover:hover {
+  border-color: var(--amber-primary);
+  transform: scale(1.005);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+}
+
+/* ─── Drop zone dashed border ───────────────────────────────────────────── */
+.drop-zone-dashed {
+  border: 2px dashed var(--amber-primary);
+  transition: background-color 200ms ease-out;
+}
+.drop-zone-dashed.drag-over {
+  background-color: var(--amber-tint);
+}
