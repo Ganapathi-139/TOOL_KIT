@@ -6,10 +6,10 @@ import { Footer } from "@/components/Footer";
 import { CategoryCard } from "@/components/CategoryCard";
 import { ToolCard } from "@/components/ToolCard";
 import { Icon } from "@/components/Icon";
-import { categories, getPopularTools, tools } from "@/lib/tools-data";
+import { categories, getPopularTools } from "@/lib/tools-data";
 
 export const metadata: Metadata = {
-  title: "Project Name — Free Online Tools",
+  title: "ToolKit — Free Online Tools",
   description:
     "PDF converters, QR code generators, image editors, student tools, developer utilities — free, no sign-up needed.",
 };
@@ -185,7 +185,7 @@ export default function HomePage() {
         {/* ── TRUST ──────────────────────────────────────────────────────── */}
         <section
           className="py-16 max-w-[700px] mx-auto px-6 text-center"
-          aria-label="Why use Project Name"
+          aria-label="Why use ToolKit"
         >
           <div className="flex flex-col sm:flex-row justify-center items-center gap-6 sm:gap-10">
             {trustItems.map((item) => (

@@ -5,7 +5,9 @@ import {
   Expand, RefreshCcw, Calculator, AlignLeft, Braces, Binary,
   Terminal, Timer, ArrowLeftRight, Search, Upload, Download,
   CheckCircle, Shield, Moon, Sun, Menu, X, ChevronRight,
-  ArrowUpRight, Plus, Trash2, GripVertical,
+  ArrowUpRight, Plus, Trash2, GripVertical, CalendarCheck,
+  Sparkles, Sliders, FileCode, Layers, HardDrive, Gauge, Clock,
+  Hash, Fingerprint, Link as LinkIcon, KeyRound, Percent, CaseUpper, Barcode, Volume2,
   type LucideProps,
 } from "lucide-react";
 import type { ElementType } from "react";
@@ -17,7 +19,9 @@ const iconMap: Record<string, ElementType<LucideProps>> = {
   Expand, RefreshCcw, Calculator, AlignLeft, Braces, Binary,
   Terminal, Timer, ArrowLeftRight, Search, Upload, Download,
   CheckCircle, Shield, Moon, Sun, Menu, X, ChevronRight,
-  ArrowUpRight, Plus, Trash2, GripVertical,
+  ArrowUpRight, Plus, Trash2, GripVertical, CalendarCheck,
+  Sparkles, Sliders, FileCode, Layers, HardDrive, Gauge, Clock,
+  Hash, Fingerprint, Link: LinkIcon, KeyRound, Percent, CaseUpper, Barcode, Volume2,
 };
 
 interface IconProps extends LucideProps {

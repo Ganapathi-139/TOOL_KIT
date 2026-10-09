@@ -24,7 +24,7 @@ export function Footer() {
           className="font-headline font-semibold text-lg tracking-tight"
           style={{ color: "var(--amber-primary)" }}
         >
-          Project Name
+          ToolKit
         </Link>
 
         {/* Links */}
@@ -52,7 +52,7 @@ export function Footer() {
           className="font-body text-[13px]"
           style={{ color: "var(--text-secondary)" }}
         >
-          © {new Date().getFullYear()} Project Name. All rights reserved.
+          © 2025 ToolKit. All rights reserved.
         </p>
       </div>
     </footer>

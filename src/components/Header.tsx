@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Moon, Sun, Menu, X } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -15,8 +15,13 @@ const navLinks = [
 
 export function Header() {
   const pathname = usePathname();
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const { setTheme, resolvedTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const toggleTheme = () =>
     setTheme(resolvedTheme === "dark" ? "light" : "dark");
@@ -36,9 +41,9 @@ export function Header() {
           href="/"
           className="font-headline font-semibold text-xl tracking-tight"
           style={{ color: "var(--amber-primary)" }}
-          aria-label="Project Name home"
+          aria-label="ToolKit home"
         >
-          Project Name
+          ToolKit
         </Link>
 
         {/* Desktop nav */}
@@ -88,7 +93,11 @@ export function Header() {
               color: "var(--text-secondary)",
             }}
           >
-            {resolvedTheme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
+            {mounted ? (
+              resolvedTheme === "dark" ? <Sun size={20} /> : <Moon size={20} />
+            ) : (
+              <span className="w-5 h-5 block" />
+            )}
           </button>
 
           {/* Mobile hamburger */}

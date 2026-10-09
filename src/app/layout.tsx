@@ -19,8 +19,8 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   title: {
-    default: "Project Name — Free Online Tools",
-    template: "%s | Project Name",
+    default: "ToolKit — Free Online Tools",
+    template: "%s | ToolKit",
   },
   description:
     "PDF converters, QR code generators, image editors, student tools, developer utilities, and everyday tools — free, no sign-up needed.",
@@ -33,19 +33,19 @@ export const metadata: Metadata = {
     "student tools",
     "free tools",
   ],
-  authors: [{ name: "Project Name" }],
-  creator: "Project Name",
+  authors: [{ name: "ToolKit" }],
+  creator: "ToolKit",
   openGraph: {
     type: "website",
     locale: "en_US",
-    title: "Project Name — Free Online Tools",
+    title: "ToolKit — Free Online Tools",
     description:
       "PDF converters, QR codes, image editors, calculators, and more — no sign-up needed.",
-    siteName: "Project Name",
+    siteName: "ToolKit",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Project Name — Free Online Tools",
+    title: "ToolKit — Free Online Tools",
     description: "All the tools you need, in one place.",
   },
   robots: { index: true, follow: true },
