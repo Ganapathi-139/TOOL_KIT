@@ -20,7 +20,8 @@ import {
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import JSZip from "jszip";
 
 export default function WordToPdfPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -83,34 +84,227 @@ export default function WordToPdfPage() {
     setErrorMessage(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const apiRes = await fetch("/api/word-to-pdf", {
-        method: "POST",
-        body: formData,
+      const buffer = await file.arrayBuffer();
+      const zip = await JSZip.loadAsync(buffer);
+
+      if (!zip.files["word/document.xml"]) {
+        throw new Error(
+          "Invalid or unsupported Word document structure. Please ensure it is a valid .docx file."
+        );
+      }
+
+      // Check document rels for images
+      const mediaMap: Record<string, string> = {};
+      if (zip.files["word/_rels/document.xml.rels"]) {
+        const relsText = await zip.files["word/_rels/document.xml.rels"].async("text");
+        const relsDoc = new DOMParser().parseFromString(relsText, "text/xml");
+        const rels = Array.from(relsDoc.getElementsByTagName("Relationship"));
+        for (const rel of rels) {
+          const id = rel.getAttribute("Id");
+          const target = rel.getAttribute("Target");
+          if (id && target && target.includes("media/")) {
+            const mediaPath = target.startsWith("media/") ? `word/${target}` : `word/${target.replace(/^\.\.\//, "")}`;
+            if (zip.files[mediaPath]) {
+              const b64 = await zip.files[mediaPath].async("base64");
+              const ext = mediaPath.endsWith(".png") ? "png" : "jpeg";
+              mediaMap[id] = `data:image/${ext};base64,${b64}`;
+            }
+          }
+        }
+      }
+
+      const docXmlText = await zip.files["word/document.xml"].async("text");
+      const doc = new DOMParser().parseFromString(docXmlText, "text/xml");
+
+      // Extract paragraphs and tables
+      const body = doc.getElementsByTagName("w:body")[0];
+      if (!body) throw new Error("Could not find document body in this Word file.");
+
+      let generatedHtml = "";
+      const textBlocks: { type: "heading" | "paragraph" | "list"; text: string; level?: number }[] = [];
+
+      for (const node of Array.from(body.childNodes)) {
+        if (node.nodeName === "w:p") {
+          const p = node as Element;
+          const pStyle = p.getElementsByTagName("w:pStyle")[0]?.getAttribute("w:val") || "";
+          const isHeading = pStyle.toLowerCase().includes("heading") || pStyle.toLowerCase().includes("title");
+          const isList = p.getElementsByTagName("w:numPr").length > 0;
+
+          const runs = Array.from(p.getElementsByTagName("w:r"));
+          let pText = "";
+          let pHtml = "";
+
+          for (const r of runs) {
+            const isBold = r.getElementsByTagName("w:b").length > 0;
+            const isItalic = r.getElementsByTagName("w:i").length > 0;
+            const isUnderline = r.getElementsByTagName("w:u").length > 0;
+            const textNode = r.getElementsByTagName("w:t")[0];
+            const text = textNode?.textContent || "";
+
+            if (text) {
+              pText += text;
+              let styledText = text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+              if (isBold) styledText = `<strong>${styledText}</strong>`;
+              if (isItalic) styledText = `<em>${styledText}</em>`;
+              if (isUnderline) styledText = `<u>${styledText}</u>`;
+              pHtml += styledText;
+            }
+
+            const blip = r.getElementsByTagName("a:blip")[0];
+            if (blip) {
+              const embedId = blip.getAttribute("r:embed");
+              if (embedId && mediaMap[embedId]) {
+                pHtml += `<img src="${mediaMap[embedId]}" alt="Document Image" style="max-width:100%;height:auto;margin:12px auto;display:block;" />`;
+              }
+            }
+          }
+
+          if (pText.trim()) {
+            if (isHeading) {
+              generatedHtml += `<h2 style="font-size:18pt;font-weight:700;margin:16px 0 8px 0;color:#0f172a;">${pHtml}</h2>`;
+              textBlocks.push({ type: "heading", text: pText.trim() });
+            } else if (isList) {
+              generatedHtml += `<li style="margin-left:20px;margin-bottom:6px;">${pHtml}</li>`;
+              textBlocks.push({ type: "list", text: pText.trim() });
+            } else {
+              generatedHtml += `<p style="margin-bottom:12px;line-height:1.6;">${pHtml}</p>`;
+              textBlocks.push({ type: "paragraph", text: pText.trim() });
+            }
+          }
+        } else if (node.nodeName === "w:tbl") {
+          const tbl = node as Element;
+          let tblHtml = `<table style="width:100%;border-collapse:collapse;margin:16px 0;border:1px solid #cbd5e1;">`;
+          const rows = Array.from(tbl.getElementsByTagName("w:tr"));
+          for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+            tblHtml += `<tr>`;
+            const cells = Array.from(rows[rIdx].getElementsByTagName("w:tc"));
+            for (const cell of cells) {
+              const cellText = cell.textContent || "";
+              const tag = rIdx === 0 ? "th" : "td";
+              tblHtml += `<${tag} style="border:1px solid #cbd5e1;padding:8px 12px;text-align:left;background:${rIdx === 0 ? "#f8fafc" : "#fff"};">${cellText}</${tag}>`;
+              if (cellText.trim()) {
+                textBlocks.push({ type: "paragraph", text: cellText.trim() });
+              }
+            }
+            tblHtml += `</tr>`;
+          }
+          tblHtml += `</table>`;
+          generatedHtml += tblHtml;
+        }
+      }
+
+      setHtmlContent(generatedHtml);
+
+      // Render PDF via pdf-lib
+      const pdfDoc = await PDFDocument.create();
+      const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+      const pageWidth = pageSize === "a4" ? 595.28 : 612;
+      const pageHeight = pageSize === "a4" ? 841.89 : 792;
+      const margin = 54;
+      const contentWidth = pageWidth - margin * 2;
+
+      let currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+      let currentY = pageHeight - margin;
+      let totalPages = 1;
+
+      // Document title header
+      currentPage.drawText(file.name.replace(/\.[^/.]+$/, ""), {
+        x: margin,
+        y: currentY,
+        size: 16,
+        font: helveticaBold,
+        color: rgb(0.09, 0.13, 0.2),
       });
+      currentY -= 25;
 
-      if (!apiRes.ok) {
-        const errJson = await apiRes.json().catch(() => ({}));
-        throw new Error(errJson.error || `Server responded with status ${apiRes.status}`);
+      // Divider line
+      currentPage.drawLine({
+        start: { x: margin, y: currentY },
+        end: { x: pageWidth - margin, y: currentY },
+        thickness: 1,
+        color: rgb(0.85, 0.47, 0.05),
+      });
+      currentY -= 20;
+
+      for (const block of textBlocks) {
+        const isHeading = block.type === "heading";
+        const font = isHeading ? helveticaBold : helvetica;
+        const currentFontSize = isHeading ? fontSize + 3 : fontSize;
+        const lineH = currentFontSize * lineSpacing;
+
+        const words = block.text.split(/\s+/);
+        let line = "";
+
+        for (const word of words) {
+          const testLine = line ? `${line} ${word}` : word;
+          let textWidth = 0;
+          try {
+            textWidth = font.widthOfTextAtSize(testLine, currentFontSize);
+          } catch {
+            textWidth = testLine.length * (currentFontSize * 0.5);
+          }
+
+          if (textWidth > contentWidth && line) {
+            if (currentY - lineH < margin) {
+              currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+              currentY = pageHeight - margin;
+              totalPages++;
+            }
+
+            try {
+              currentPage.drawText(line, {
+                x: block.type === "list" ? margin + 14 : margin,
+                y: currentY,
+                size: currentFontSize,
+                font,
+                color: isHeading ? rgb(0.06, 0.09, 0.16) : rgb(0.2, 0.25, 0.33),
+              });
+            } catch {
+              // Ignore rare character glyph encoding issues in fallback
+            }
+            currentY -= lineH;
+            line = word;
+          } else {
+            line = testLine;
+          }
+        }
+
+        if (line) {
+          if (currentY - lineH < margin) {
+            currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+            currentY = pageHeight - margin;
+            totalPages++;
+          }
+
+          try {
+            currentPage.drawText(line, {
+              x: block.type === "list" ? margin + 14 : margin,
+              y: currentY,
+              size: currentFontSize,
+              font,
+              color: isHeading ? rgb(0.06, 0.09, 0.16) : rgb(0.2, 0.25, 0.33),
+            });
+          } catch {
+            // Ignore rare character glyph encoding issues
+          }
+          currentY -= lineH + (isHeading ? 6 : 4);
+        }
       }
 
-      const pdfBlob = await apiRes.blob();
-      if (!pdfBlob || pdfBlob.size === 0) {
-        throw new Error("Converted PDF document is empty.");
-      }
+      setPageCount(totalPages);
 
+      const pdfBytes = await pdfDoc.save();
+      const pdfBlob = new Blob([pdfBytes as unknown as BlobPart], { type: "application/pdf" });
+
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
       const url = URL.createObjectURL(pdfBlob);
       setPdfBlobUrl(url);
       setPdfFileSize(pdfBlob.size);
-
-      try {
-        const arr = await pdfBlob.arrayBuffer();
-        const loadedDoc = await PDFDocument.load(arr);
-        setPageCount(loadedDoc.getPageCount());
-      } catch {
-        setPageCount(1);
-      }
     } catch (err: unknown) {
       console.error("Word to PDF conversion failed:", err);
       setErrorMessage(
@@ -559,7 +753,7 @@ export default function WordToPdfPage() {
               </h3>
               <div className="flex flex-col gap-2">
                 {[
-                  { name: "PDF to Word", href: "/tools/pdf/to-word", icon: FileType2 },
+                  { name: "PDF to PPT", href: "/tools/pdf/to-ppt", icon: FileType2 },
                   { name: "Merge PDF", href: "/tools/pdf/merge", icon: FileText },
                   { name: "Compress PDF", href: "/tools/pdf/compress", icon: Minimize2 },
                   { name: "Image to PDF", href: "/tools/pdf/image-to-pdf", icon: ImageDown },

@@ -17,10 +17,13 @@ import {
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import JSZip from "jszip";
+import { PDFDocument } from "pdf-lib";
 
 export default function PptToPdfPage() {
   const [file, setFile] = useState<File | null>(null);
   const [isConverting, setIsConverting] = useState(false);
+  const [conversionStatus, setConversionStatus] = useState<string>("");
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [pdfFileSize, setPdfFileSize] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -50,13 +53,20 @@ export default function PptToPdfPage() {
     setPdfFileSize(null);
     setErrorMessage(null);
     setIsConverting(false);
+    setConversionStatus("");
   };
 
   const handleFile = (selected: File) => {
     clearFile();
     const name = selected.name.toLowerCase();
     if (!name.endsWith(".pptx") && !name.endsWith(".ppt")) {
-      setErrorMessage("Please select a valid PowerPoint presentation (.pptx or .ppt).");
+      setErrorMessage("Please select a valid PowerPoint presentation (.pptx).");
+      return;
+    }
+    if (name.endsWith(".ppt") && !name.endsWith(".pptx")) {
+      setErrorMessage(
+        "Legacy binary .ppt files cannot be parsed directly in modern web browsers. Please save or export your presentation as .pptx in PowerPoint or Google Slides before converting."
+      );
       return;
     }
     setFile(selected);
@@ -67,31 +77,176 @@ export default function PptToPdfPage() {
 
     setIsConverting(true);
     setErrorMessage(null);
+    setConversionStatus("Opening presentation package...");
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      const buffer = await file.arrayBuffer();
+      const zip = await JSZip.loadAsync(buffer);
 
-      const res = await fetch("/api/ppt-to-pdf", {
-        method: "POST",
-        body: formData,
+      // Find all slide files: ppt/slides/slide{N}.xml
+      const slideFileNames = Object.keys(zip.files).filter((key) =>
+        /^ppt\/slides\/slide\d+\.xml$/i.test(key)
+      );
+
+      if (slideFileNames.length === 0) {
+        throw new Error(
+          "Could not detect standard presentation slides in this file. Please ensure it is a valid .pptx presentation."
+        );
+      }
+
+      // Sort slide numbers numerically
+      slideFileNames.sort((a, b) => {
+        const numA = parseInt(a.replace(/\D/g, ""), 10) || 0;
+        const numB = parseInt(b.replace(/\D/g, ""), 10) || 0;
+        return numA - numB;
       });
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || `Server responded with status ${res.status}`);
+      const totalSlides = slideFileNames.length;
+      const pdfDoc = await PDFDocument.create();
+
+      const parser = new DOMParser();
+      const canvasWidth = 960;
+      const canvasHeight = 540;
+
+      for (let i = 0; i < totalSlides; i++) {
+        const slidePath = slideFileNames[i];
+        setConversionStatus(`Converting slide ${i + 1} of ${totalSlides}...`);
+
+        const slideXmlStr = await zip.files[slidePath].async("text");
+        const doc = parser.parseFromString(slideXmlStr, "text/xml");
+
+        // Extract paragraphs and texts
+        const paragraphs = Array.from(doc.getElementsByTagName("a:p"));
+        const textLines: string[] = [];
+
+        paragraphs.forEach((p) => {
+          const textRuns = Array.from(p.getElementsByTagName("a:t"));
+          const line = textRuns.map((t) => t.textContent || "").join("").trim();
+          if (line) textLines.push(line);
+        });
+
+        // Check if there is a background image or embedded image in slide rels
+        const slideNumMatch = slidePath.match(/slide(\d+)\.xml/i);
+        const slideNum = slideNumMatch ? slideNumMatch[1] : `${i + 1}`;
+        const relsPath = `ppt/slides/_rels/slide${slideNum}.xml.rels`;
+        let embeddedImageDataUrl: string | null = null;
+
+        if (zip.files[relsPath]) {
+          const relsStr = await zip.files[relsPath].async("text");
+          const relsDoc = parser.parseFromString(relsStr, "text/xml");
+          const relNodes = Array.from(relsDoc.getElementsByTagName("Relationship"));
+          const imageRel = relNodes.find((r) =>
+            (r.getAttribute("Type") || "").includes("/image")
+          );
+
+          if (imageRel) {
+            let target = imageRel.getAttribute("Target") || "";
+            if (target.startsWith("../")) target = "ppt/" + target.replace(/^\.\.\//, "");
+            else if (!target.startsWith("ppt/")) target = "ppt/slides/" + target;
+
+            if (zip.files[target]) {
+              const imgBuffer = await zip.files[target].async("base64");
+              const ext = target.toLowerCase().endsWith(".png") ? "png" : "jpeg";
+              embeddedImageDataUrl = `data:image/${ext};base64,${imgBuffer}`;
+            }
+          }
+        }
+
+        // Render slide onto canvas
+        const canvas = document.createElement("canvas");
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        const ctx = canvas.getContext("2d");
+
+        if (ctx) {
+          // Slide background
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+          if (embeddedImageDataUrl) {
+            await new Promise<void>((resolve) => {
+              const img = new Image();
+              img.onload = () => {
+                ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+                resolve();
+              };
+              img.onerror = () => resolve();
+              img.src = embeddedImageDataUrl!;
+            });
+          }
+
+          // If there's text extracted, render cleanly overlayed or on top
+          if (textLines.length > 0 && !embeddedImageDataUrl) {
+            // Elegant slide layout
+            // Header accent bar
+            ctx.fillStyle = "#d97706";
+            ctx.fillRect(0, 0, canvasWidth, 8);
+
+            // Title
+            const title = textLines[0];
+            ctx.fillStyle = "#1e293b";
+            ctx.font = "bold 32px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+            ctx.fillText(title.length > 55 ? title.slice(0, 52) + "..." : title, 60, 90);
+
+            // Subtle divider
+            ctx.strokeStyle = "#e2e8f0";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(60, 115);
+            ctx.lineTo(canvasWidth - 60, 115);
+            ctx.stroke();
+
+            // Body bullet items
+            ctx.fillStyle = "#334155";
+            ctx.font = "20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+            let currentY = 160;
+
+            for (let t = 1; t < Math.min(textLines.length, 10); t++) {
+              const line = textLines[t];
+              // Bullet point dot
+              ctx.fillStyle = "#d97706";
+              ctx.beginPath();
+              ctx.arc(70, currentY - 6, 4, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Bullet text
+              ctx.fillStyle = "#334155";
+              ctx.fillText(line.length > 70 ? line.slice(0, 67) + "..." : line, 90, currentY);
+              currentY += 38;
+            }
+
+            // Slide number footer
+            ctx.fillStyle = "#94a3b8";
+            ctx.font = "14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+            ctx.fillText(`Slide ${i + 1} of ${totalSlides}`, canvasWidth - 140, canvasHeight - 30);
+          }
+        }
+
+        // Convert canvas to image and embed into PDF
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+        const base64Data = dataUrl.split(",")[1];
+        const imageBytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+
+        const embeddedImage = await pdfDoc.embedJpg(imageBytes);
+        const pdfPage = pdfDoc.addPage([canvasWidth, canvasHeight]);
+        pdfPage.drawImage(embeddedImage, {
+          x: 0,
+          y: 0,
+          width: canvasWidth,
+          height: canvasHeight,
+        });
       }
 
-      const blob = await res.blob();
-      if (!blob || blob.size === 0) {
-        throw new Error("Generated PDF is empty. Please check the presentation.");
-      }
+      setConversionStatus("Finalizing PDF document...");
+      const pdfBytes = await pdfDoc.save();
+      const pdfBlob = new Blob([pdfBytes as unknown as BlobPart], { type: "application/pdf" });
 
       if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
-      const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(pdfBlob);
       blobUrlRef.current = url;
       setPdfBlobUrl(url);
-      setPdfFileSize(blob.size);
+      setPdfFileSize(pdfBlob.size);
+      setConversionStatus("");
     } catch (err: unknown) {
       console.error("PPT to PDF conversion failed:", err);
       setErrorMessage(
@@ -243,7 +398,7 @@ export default function PptToPdfPage() {
                       {isConverting ? (
                         <>
                           <Loader2 size={18} className="animate-spin" />
-                          <span>Converting Presentation to PDF...</span>
+                          <span>{conversionStatus || "Converting Presentation to PDF..."}</span>
                         </>
                       ) : (
                         <>
@@ -375,8 +530,8 @@ export default function PptToPdfPage() {
               <div className="flex flex-col gap-3">
                 {[
                   { name: "PDF to PPT", href: "/tools/pdf/to-ppt", icon: Presentation },
-                  { name: "PDF to Word", href: "/tools/pdf/to-word", icon: FileText },
                   { name: "Word to PDF", href: "/tools/pdf/word-to-pdf", icon: FileText },
+                  { name: "Merge PDF", href: "/tools/pdf/merge", icon: FileText },
                 ].map((t) => (
                   <Link
                     key={t.name}

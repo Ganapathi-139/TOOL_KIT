@@ -581,7 +581,7 @@ export default function TextToPdfPage() {
               <div className="flex flex-col gap-2">
                 {[
                   { name: "PDF to Plain Text", href: "/tools/pdf/to-text", icon: FileText },
-                  { name: "PDF to Word (.docx)", href: "/tools/pdf/to-word", icon: FileType2 },
+                  { name: "Word to PDF", href: "/tools/pdf/word-to-pdf", icon: FileType2 },
                   { name: "Word to PDF", href: "/tools/pdf/word-to-pdf", icon: FileText },
                   { name: "Merge PDF", href: "/tools/pdf/merge", icon: FilePlus2 },
                 ].map((item, idx) => (

@@ -18,15 +18,33 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Breadcrumb } from "@/components/Breadcrumb";
 
+import JSZip from "jszip";
+
 export default function PdfToPptPage() {
   const [file, setFile] = useState<File | null>(null);
   const [isConverting, setIsConverting] = useState(false);
+  const [conversionStatus, setConversionStatus] = useState<string>("");
   const [pptxBlobUrl, setPptxBlobUrl] = useState<string | null>(null);
   const [pptxFileSize, setPptxFileSize] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const blobUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && !window.pdfjsLib) {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      script.async = true;
+      script.onload = () => {
+        if (window.pdfjsLib) {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        }
+      };
+      document.body.appendChild(script);
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -50,6 +68,7 @@ export default function PdfToPptPage() {
     setPptxFileSize(null);
     setErrorMessage(null);
     setIsConverting(false);
+    setConversionStatus("");
   };
 
   const handleFile = (selected: File) => {
@@ -67,31 +86,101 @@ export default function PdfToPptPage() {
 
     setIsConverting(true);
     setErrorMessage(null);
+    setConversionStatus("Initializing PDF engine...");
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch("/api/pdf-to-ppt", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || `Server responded with status ${res.status}`);
+      if (!window.pdfjsLib) {
+        throw new Error("PDF processing engine is still initializing. Please wait a moment and try again.");
       }
 
-      const blob = await res.blob();
-      if (!blob || blob.size === 0) {
-        throw new Error("Generated PowerPoint presentation is empty.");
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+      const numPages = pdf.numPages;
+
+      if (numPages === 0) {
+        throw new Error("The selected PDF document contains no pages.");
       }
+
+      const zip = new JSZip();
+
+      // Root _rels/.rels
+      zip.folder("_rels")?.file(
+        ".rels",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>\n</Relationships>`
+      );
+
+      const pptFolder = zip.folder("ppt");
+      const pptRelsFolder = pptFolder?.folder("_rels");
+      const slidesFolder = pptFolder?.folder("slides");
+      const mediaFolder = pptFolder?.folder("media");
+
+      let contentTypesOverrides = "";
+      let presentationRels = "";
+      let sldIdLst = "";
+
+      const emuWidth = 12192000;
+      const emuHeight = 6858000;
+
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        setConversionStatus(`Rendering slide ${pageNum} of ${numPages}...`);
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 2.0 });
+
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) continue;
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        const dataUrl = canvas.toDataURL("image/png");
+        const base64Data = dataUrl.split(",")[1];
+        mediaFolder?.file(`image${pageNum}.png`, base64Data, { base64: true });
+
+        const rId = `rId${pageNum}`;
+        const sldId = 255 + pageNum;
+
+        contentTypesOverrides += `  <Override PartName="/ppt/slides/slide${pageNum}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>\n`;
+        presentationRels += `  <Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${pageNum}.xml"/>\n`;
+        sldIdLst += `    <p:sldId id="${sldId}" r:id="${rId}"/>\n`;
+
+        const slideXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">\n  <p:cSld>\n    <p:spTree>\n      <p:nvGrpSpPr>\n        <p:cNvPr id="1" name=""/>\n        <p:cNvGrpSpPr/>\n        <p:nvPr/>\n      </p:nvGrpSpPr>\n      <p:grpSpPr>\n        <a:xfrm>\n          <a:off x="0" y="0"/>\n          <a:ext cx="0" cy="0"/>\n          <a:chOff x="0" y="0"/>\n          <a:chExt cx="0" cy="0"/>\n        </a:xfrm>\n      </p:grpSpPr>\n      <p:pic>\n        <p:nvPicPr>\n          <p:cNvPr id="2" name="Slide ${pageNum}"/>\n          <p:cNvPicPr>\n            <a:picLocks noChangeAspect="1"/>\n          </p:cNvPicPr>\n          <p:nvPr/>\n        </p:nvPicPr>\n        <p:blipFill>\n          <a:blip r:embed="rId1"/>\n          <a:stretch>\n            <a:fillRect/>\n          </a:stretch>\n        </p:blipFill>\n        <p:spPr>\n          <a:xfrm>\n            <a:off x="0" y="0"/>\n            <a:ext cx="${emuWidth}" cy="${emuHeight}"/>\n          </a:xfrm>\n          <a:prstGeom prst="rect">\n            <a:avLst/>\n          </a:prstGeom>\n        </p:spPr>\n      </p:pic>\n    </p:spTree>\n  </p:cSld>\n</p:sld>`;
+
+        slidesFolder?.file(`slide${pageNum}.xml`, slideXml);
+
+        const slideRelsFolder = slidesFolder?.folder("_rels");
+        slideRelsFolder?.file(
+          `slide${pageNum}.xml.rels`,
+          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image${pageNum}.png"/>\n</Relationships>`
+        );
+      }
+
+      setConversionStatus("Packaging PowerPoint presentation (.pptx)...");
+
+      zip.file(
+        "[Content_Types].xml",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n  <Default Extension="xml" ContentType="application/xml"/>\n  <Default Extension="png" ContentType="image/png"/>\n  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>\n${contentTypesOverrides}</Types>`
+      );
+
+      pptFolder?.file(
+        "presentation.xml",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">\n  <p:sldMasterIdLst/>\n  <p:sldIdLst>\n${sldIdLst}  </p:sldIdLst>\n  <p:sldSz cx="${emuWidth}" cy="${emuHeight}" type="screen16x9"/>\n  <p:notesSz cx="6858000" cy="9144000"/>\n</p:presentation>`
+      );
+
+      pptRelsFolder?.file(
+        "presentation.xml.rels",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n${presentationRels}</Relationships>`
+      );
+
+      const blob = await zip.generateAsync({ type: "blob" });
 
       if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
       const url = URL.createObjectURL(blob);
       blobUrlRef.current = url;
       setPptxBlobUrl(url);
       setPptxFileSize(blob.size);
+      setConversionStatus("");
     } catch (err: unknown) {
       console.error("PDF to PPT conversion failed:", err);
       setErrorMessage(
@@ -243,7 +332,7 @@ export default function PdfToPptPage() {
                       {isConverting ? (
                         <>
                           <Loader2 size={18} className="animate-spin" />
-                          <span>Generating PowerPoint Deck...</span>
+                          <span>{conversionStatus || "Generating PowerPoint Deck..."}</span>
                         </>
                       ) : (
                         <>
@@ -375,8 +464,8 @@ export default function PdfToPptPage() {
               <div className="flex flex-col gap-3">
                 {[
                   { name: "PPT to PDF", href: "/tools/pdf/ppt-to-pdf", icon: Presentation },
-                  { name: "PDF to Word", href: "/tools/pdf/to-word", icon: FileText },
                   { name: "Word to PDF", href: "/tools/pdf/word-to-pdf", icon: FileText },
+                  { name: "Merge PDF", href: "/tools/pdf/merge", icon: FileText },
                 ].map((t) => (
                   <Link
                     key={t.name}

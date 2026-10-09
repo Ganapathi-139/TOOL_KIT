@@ -27,7 +27,7 @@ export const categories: Category[] = [
     description: "Merge, split, compress, and convert PDF documents in seconds.",
     href: "/tools/pdf",
     icon: "FileText",
-    toolCount: 11,
+    toolCount: 12,
     color: "var(--amber-tint)",
   },
   {
@@ -102,14 +102,6 @@ export const tools: Tool[] = [
     description: "Reduce PDF file size while keeping quality acceptable.",
     href: "/tools/pdf/compress",
     icon: "Minimize2",
-    categoryId: "pdf",
-  },
-  {
-    id: "pdf-to-word",
-    name: "PDF to Word",
-    description: "Convert PDF documents to editable Word (.docx) files.",
-    href: "/tools/pdf/to-word",
-    icon: "FileType2",
     categoryId: "pdf",
   },
   {

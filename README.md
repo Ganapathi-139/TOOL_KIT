@@ -2,25 +2,24 @@
 
 A modern, fast, privacy-first web utility suite built with **Next.js 16**, **React 19**, and **Tailwind CSS v4**.
 
-ToolKit provides **38 essential everyday utilities** spanning PDF document processing, QR & barcode generation, image optimization, academic calculation tools, developer utilities, and productivity helpers.
+ToolKit provides **37 essential everyday utilities** spanning PDF document tools, QR & barcode generation, image optimization, academic calculation tools, developer utilities, and productivity helpers.
 
-Designed with a high-fidelity local processing architecture: standard utilities run **100% in-browser** without uploading files, and advanced document conversions (Word ↔ PDF, PDF ↔ PowerPoint) are driven by hardened local Python engines with strict security controls.
+Designed with a **100% client-side, browser-native processing architecture**: every tool—including document conversions like Word to PDF, PDF to PowerPoint, and PowerPoint to PDF—executes directly inside the user's browser. No file uploads, no remote servers, no cloud costs, and zero data leakage.
 
 ---
 
-## ✨ Complete Tool Inventory (38 Tools Across 6 Categories)
+## ✨ Available Tools (37 Tools Across 6 Categories)
 
-### 📄 PDF Document Suite (13 Tools)
-- **PDF to Word (.docx)** (`/tools/pdf/to-word`): High-fidelity PDF to Microsoft Word converter powered by `pdf2docx` preserving multi-column layouts, tables, and images.
-- **Word to PDF** (`/tools/pdf/word-to-pdf`): Native `.docx` / `.doc` to PDF conversion engine with macro execution force-disabled.
-- **PDF to PowerPoint (.pptx)** (`/tools/pdf/to-ppt`): Converts PDF slides into editable Microsoft PowerPoint presentations.
-- **PowerPoint to PDF** (`/tools/pdf/ppt-to-pdf`): Converts `.pptx` / `.ppt` presentations directly into high-resolution PDF documents.
-- **Merge PDF** (`/tools/pdf/merge`): Combine multiple PDF documents into a single file with custom drag-and-drop reordering.
+### 📄 PDF Document Suite (12 Tools)
+- **Word to PDF** (`/tools/pdf/word-to-pdf`): Parse Microsoft Word (.docx) files in-browser and export clean, formatted PDF documents with custom margins and vector typography.
+- **PDF to PowerPoint (.pptx)** (`/tools/pdf/to-ppt`): Convert PDF document pages into presentation-ready Microsoft PowerPoint slides using client-side OpenXML presentation generation.
+- **PowerPoint to PDF** (`/tools/pdf/ppt-to-pdf`): Convert PowerPoint presentations (.pptx) into paginated PDF documents directly in the browser.
+- **Merge PDF** (`/tools/pdf/merge`): Combine multiple PDF documents into a single file with custom drag-and-drop ordering.
 - **Split PDF** (`/tools/pdf/split`): Extract specific page ranges or split PDFs into individual pages.
 - **Compress PDF** (`/tools/pdf/compress`): Streamline PDF object streams and cross-references with transparent size savings.
 - **Image to PDF** (`/tools/pdf/image-to-pdf`): Convert JPG, PNG, and WebP images to PDF with A4/Letter sizing and margin controls.
-- **PDF to JPG / PNG** (`/tools/pdf/to-jpg`): Render every PDF page into high-resolution raster images in-browser.
-- **PDF to Text** (`/tools/pdf/to-text`): Extract plain raw text from PDF files directly in the browser.
+- **PDF to JPG / PNG** (`/tools/pdf/to-jpg`): Render every PDF page into high-resolution images in-browser via PDF.js.
+- **PDF to Text** (`/tools/pdf/to-text`): Extract plain Unicode text from PDF files directly in the browser.
 - **Text to PDF** (`/tools/pdf/text-to-pdf`): Format raw text and generate clean, downloadable PDF documents.
 - **Rotate PDF** (`/tools/pdf/rotate`): Rotate pages by 90°, 180°, or 270° across all pages, odd/even, or custom page selections.
 - **Reorder & Delete Pages** (`/tools/pdf/reorder`): Visually reorder, extract, or delete specific pages before saving.
@@ -62,25 +61,34 @@ Designed with a high-fidelity local processing architecture: standard utilities 
 
 ---
 
-## 🔒 Security & Privacy Architecture
+## 🔒 Privacy & Security
 
-ToolKit is built according to defense-in-depth principles:
+ToolKit is built on a strict privacy model:
 
-1. **Client-Side Processing First**: 34 of the 38 tools run **100% in-browser** using modern Web APIs (`FileReader`, `Canvas`, `Blob`, `WebCrypto`). No files or text leave the device.
-2. **Strict File Signature (Magic Byte) Validation**: Conversion APIs reject files based on actual file headers (`%PDF-`, `PK\x03\x04`), preventing extension-spoofing and polyglot payloads.
-3. **Automated Subprocess Hardening**: Word and PowerPoint conversion scripts execute with `AutomationSecurity = 3` (`msoAutomationSecurityForceDisable`) and `DisplayAlerts = False`, neutralizing potential malicious macros.
-4. **Rate Limiting & DoS Protection**: API endpoints enforce sliding-window IP rate limiting (15 req/min per IP) to prevent server resource exhaustion.
-5. **DOM XSS Sanitization**: Markdown and user input previewers escape HTML entities and strictly whitelist URL protocols (`http://`, `https://`, `mailto:`), blocking `javascript:` and `data:` schemes.
-6. **HTTP Security Headers**: Production responses include `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `X-XSS-Protection: 1; mode=block`, and strict Referrer policies.
-7. **Clean Dependencies**: Audited with `npm audit --omit=dev` for 0 vulnerabilities.
+1. **100% Client-Side In-Browser Execution**: All 37 tools run purely on the user's machine using modern Web APIs (`FileReader`, `Canvas`, `Blob`, `WebCrypto`, `DOMParser`), `pdf-lib`, and `jszip`.
+2. **Zero Server Uploads**: No files, text, images, or documents are ever transmitted to any server. Complete data confidentiality.
+3. **DOM XSS Sanitization**: User previewers (Markdown, text tools) escape HTML entities and strictly whitelist safe URL protocols (`http://`, `https://`, `mailto:`), preventing script injection.
+4. **HTTP Security Headers**: Configured with `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `X-XSS-Protection: 1; mode=block`, and strict Referrer policies.
+5. **Zero Vulnerabilities**: 0 vulnerabilities reported by `npm audit --omit=dev`.
 
 ---
 
-## 🚀 Getting Started
+## ⚡ 1-Click Free Deployment on Vercel
+
+Because all tools are 100% browser-native with zero backend server dependencies or serverless limits:
+
+1. Push your code to GitHub (or fork this repo).
+2. Go to [Vercel](https://vercel.com/) and click **"Add New Project"**.
+3. Import your GitHub repository (`Ganapathi-139/TOOL_KIT`).
+4. Set **Root Directory** to `tool-kit` (if repository contains subfolders) or leave as `./`.
+5. Click **Deploy** — your app will be live within seconds on Vercel's global CDN at $0 cost!
+
+---
+
+## 🚀 Local Development
 
 ### Prerequisites
 - **Node.js**: v18.18+ or v20+ (Node.js 22/24 recommended)
-- **Python**: v3.10+ (for Office & PDF conversion endpoints)
 - **Package Manager**: `npm`, `pnpm`, or `yarn`
 
 ### Installation
@@ -93,15 +101,9 @@ cd tool-kit
 npm install
 ```
 
-Install Python dependencies for document conversion engines:
-
-```bash
-pip install pdf2docx pymupdf python-pptx pywin32
-```
-
 ### Development Server
 
-Run the Next.js development server with Turbopack:
+Run the development server with Turbopack:
 
 ```bash
 npm run dev
@@ -111,7 +113,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Production Build
 
-Generate an optimized production build:
+Generate an optimized static production build:
 
 ```bash
 npm run build
@@ -126,7 +128,7 @@ npm start
 tool-kit/
 ├── public/                 # Static assets, logos, and icons
 ├── src/
-│   ├── app/                # Next.js App Router
+│   ├── app/                # Next.js App Router (All 100% Client-Side Routes)
 │   │   ├── layout.tsx      # Root layout with ThemeProvider and font configuration
 │   │   ├── page.tsx        # Homepage with hero, category highlights, and real-time search
 │   │   ├── globals.css     # CSS design tokens, warm amber theme, and typography
@@ -136,13 +138,8 @@ tool-kit/
 │   │   ├── contact/        # Contact page
 │   │   ├── privacy/        # Privacy policy (client-side processing declaration)
 │   │   ├── terms/          # Terms of service
-│   │   ├── api/            # Serverless conversion API endpoints
-│   │   │   ├── pdf-to-word/
-│   │   │   ├── word-to-pdf/
-│   │   │   ├── pdf-to-ppt/
-│   │   │   └── ppt-to-pdf/
 │   │   └── tools/          # Dedicated tool routes and category hubs
-│   │       ├── pdf/        # PDF suite (13 tools)
+│   │       ├── pdf/        # PDF suite (12 tools)
 │   │       ├── qr/         # QR suite (4 tools)
 │   │       ├── image/      # Image tools (3 tools)
 │   │       ├── student/    # Academic utilities (6 tools)
@@ -150,17 +147,11 @@ tool-kit/
 │   │       └── utilities/  # Everyday utilities (5 tools)
 │   ├── components/         # Reusable UI components (Header, Footer, Breadcrumb, ThemeProvider)
 │   ├── lib/
-│   │   ├── api-security.ts # Magic byte validation, rate limiting, and filename sanitization
 │   │   └── tools-data.ts   # Central registry of categories, tools, icons, and metadata
-│   ├── scripts/            # Hardened Python conversion microservices
-│   │   ├── pdf_to_docx.py  # Layout-preserving PDF to DOCX
-│   │   ├── word_to_pdf.py  # Office COM / LibreOffice Word to PDF
-│   │   ├── pdf_to_pptx.py  # PDF to PowerPoint slides
-│   │   └── ppt_to_pdf.py   # Office COM / LibreOffice PowerPoint to PDF
 │   └── types/              # TypeScript definitions
 ├── next.config.ts          # Next.js config with HTTP security headers
 ├── eslint.config.mjs       # ESLint 9 configuration
-├── package.json            # Scripts and dependencies
+├── package.json            # Dependencies (pure client-side: pdf-lib, jszip, qrcode)
 └── tsconfig.json           # TypeScript configuration
 ```
 

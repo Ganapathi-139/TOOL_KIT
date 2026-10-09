@@ -133,7 +133,7 @@ export default function MergePdfPage() {
   const relatedTools = [
     { name: "Split PDF", href: "/tools/pdf/split", icon: Scissors },
     { name: "Compress PDF", href: "/tools/pdf/compress", icon: Minimize2 },
-    { name: "PDF to Word", href: "/tools/pdf/to-word", icon: FileType2 },
+    { name: "Word to PDF", href: "/tools/pdf/word-to-pdf", icon: FileType2 },
     { name: "Rotate PDF", href: "/tools/pdf/rotate", icon: RotateCw },
     { name: "PDF Password Protect", href: "/tools/pdf/protect", icon: Lock },
   ];
