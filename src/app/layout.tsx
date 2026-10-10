@@ -18,6 +18,7 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://toolkit-two-sage.vercel.app"),
   title: {
     default: "ToolKit — Free Online Tools",
     template: "%s | ToolKit",
@@ -35,6 +36,14 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "ToolKit" }],
   creator: "ToolKit",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [{ url: "/icon.png", sizes: "512x512", type: "image/png" }],
+    shortcut: "/favicon.ico",
+  },
   openGraph: {
     type: "website",
     locale: "en_US",
@@ -42,11 +51,13 @@ export const metadata: Metadata = {
     description:
       "PDF converters, QR codes, image editors, calculators, and more — no sign-up needed.",
     siteName: "ToolKit",
+    images: [{ url: "/icon.png" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "ToolKit — Free Online Tools",
     description: "All the tools you need, in one place.",
+    images: ["/icon.png"],
   },
   robots: { index: true, follow: true },
 };
