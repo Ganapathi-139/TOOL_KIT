@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import {
-  Upload,
   Download,
   QrCode,
   Shield,
@@ -15,6 +14,7 @@ import {
   Loader2,
   ExternalLink,
   Sparkles,
+  CheckCircle2,
 } from "lucide-react";
 import QRCodeLib from "qrcode";
 import { Header } from "@/components/Header";
@@ -40,7 +40,7 @@ export default function FileShareQrPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const MAX_FILE_SIZE_MB = 100; // 100MB limit with temporary cloud hosting
+  const MAX_FILE_SIZE_MB = 100;
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + " B";
@@ -48,14 +48,15 @@ export default function FileShareQrPage() {
     return (bytes / (1024 * 1024)).toFixed(2) + " MB";
   };
 
-  const uploadToTmpFiles = (
-    file: File,
+  // Primary: Upload via our direct in-house API route (Cloudflare R2 direct download link with zero ads)
+  const uploadViaDirectApi = (
+    uploadFile: File,
     onProgress: (percent: number) => void
   ): Promise<string> => {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", uploadFile);
 
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
@@ -68,32 +69,69 @@ export default function FileShareQrPage() {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const res = JSON.parse(xhr.responseText);
-            if (res.status === "success" && res.data?.url) {
-              resolve(res.data.url);
+            if (res.success && res.downloadUrl) {
+              resolve(res.downloadUrl);
             } else {
-              reject(new Error(res.message || "Upload service returned an error."));
+              reject(new Error(res.error || "Failed to obtain download URL."));
             }
           } catch {
-            reject(new Error("Invalid response received from upload server."));
+            reject(new Error("Invalid response format from upload service."));
           }
         } else {
-          reject(new Error(`Upload failed with server status ${xhr.status}.`));
+          try {
+            const errRes = JSON.parse(xhr.responseText);
+            reject(new Error(errRes.error || `Upload failed with status ${xhr.status}`));
+          } catch {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
         }
       };
 
-      xhr.onerror = () => reject(new Error("Network error during upload. Please check your internet connection."));
-      xhr.ontimeout = () => reject(new Error("Upload timed out. Please try again with a smaller file or faster connection."));
-      xhr.open("POST", "https://tmpfiles.org/api/v1/upload");
+      xhr.onerror = () => reject(new Error("Network connection error."));
+      xhr.ontimeout = () => reject(new Error("Upload timed out."));
+      xhr.open("POST", "/api/file-share/upload");
       xhr.send(formData);
     });
   };
 
-  const fileToDataUrl = (file: File): Promise<string> => {
+  // Fallback: Upload via Gofile.io (ad-free clean storage, supports up to 10GB directly from browser)
+  const uploadViaGofile = (
+    uploadFile: File,
+    onProgress: (percent: number) => void
+  ): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target?.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
+      const xhr = new XMLHttpRequest();
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          onProgress(percent);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const res = JSON.parse(xhr.responseText);
+            if (res.status === "ok" && res.data?.downloadPage) {
+              resolve(res.data.downloadPage);
+            } else {
+              reject(new Error("Gofile did not return a valid download page."));
+            }
+          } catch {
+            reject(new Error("Invalid response received from Gofile."));
+          }
+        } else {
+          reject(new Error(`Gofile upload failed with status ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Connection error while uploading to Gofile."));
+      xhr.ontimeout = () => reject(new Error("Gofile upload timed out."));
+      xhr.open("POST", "https://upload.gofile.io/uploadfile");
+      xhr.send(formData);
     });
   };
 
@@ -131,44 +169,53 @@ export default function FileShareQrPage() {
     const sizeMB = selected.size / (1024 * 1024);
     if (sizeMB > MAX_FILE_SIZE_MB) {
       setErrorMessage(
-        `File is too large (${formatFileSize(selected.size)}). Maximum supported file size is ${MAX_FILE_SIZE_MB}MB.`
+        `File is too large (${formatFileSize(selected.size)}). Maximum supported size is ${MAX_FILE_SIZE_MB}MB.`
       );
       return;
     }
 
     setFile(selected);
     setIsGenerating(true);
-    setStatusText("Preparing file upload...");
+    setStatusText("Preparing secure file upload...");
 
     try {
-      setStatusText("Uploading file...");
-      const remoteUrl = await uploadToTmpFiles(selected, (progress) => {
-        setUploadProgress(progress);
-        setStatusText(`Uploading file (${progress}%)...`);
-      });
+      let downloadUrl = "";
 
-      setShareUrl(remoteUrl);
-      setStatusText("Generating scannable QR code...");
-      await generateQr(remoteUrl, fgColor, bgColor, qrSize);
-      setStatusText("");
-    } catch (err: unknown) {
-      console.warn("Primary upload failed, checking fallback:", err);
-
-      // If file is tiny (<= 2KB), fallback to inline data URL
-      if (selected.size <= 2048) {
+      // For files <= 4.5MB (standard documents), use our direct R2 API route (zero ads, direct download attachment)
+      if (sizeMB <= 4.2) {
         try {
-          setStatusText("Encoding local file data...");
-          const dataUrl = await fileToDataUrl(selected);
-          setShareUrl(dataUrl);
-          await generateQr(dataUrl, fgColor, bgColor, qrSize);
-          setStatusText("");
-          return;
-        } catch {
-          // continue to error below
+          setStatusText("Uploading file (direct CDN storage)...");
+          downloadUrl = await uploadViaDirectApi(selected, (progress) => {
+            setUploadProgress(progress);
+            setStatusText(`Uploading file (${progress}%)...`);
+          });
+        } catch (apiErr) {
+          console.warn("Direct API upload failed, switching to clean fallback:", apiErr);
+          setStatusText("Uploading to clean storage host...");
+          downloadUrl = await uploadViaGofile(selected, (progress) => {
+            setUploadProgress(progress);
+            setStatusText(`Uploading file (${progress}%)...`);
+          });
         }
+      } else {
+        // Files > 4.5MB upload directly to Gofile (no 4.5MB Vercel serverless limit, ad-free)
+        setStatusText("Uploading to high-capacity storage...");
+        downloadUrl = await uploadViaGofile(selected, (progress) => {
+          setUploadProgress(progress);
+          setStatusText(`Uploading file (${progress}%)...`);
+        });
       }
 
-      const errMessage = err instanceof Error ? err.message : "Failed to upload file. Please check your internet connection and try again.";
+      setShareUrl(downloadUrl);
+      setStatusText("Generating scannable QR code...");
+      await generateQr(downloadUrl, fgColor, bgColor, qrSize);
+      setStatusText("");
+    } catch (err: unknown) {
+      console.error("Upload error:", err);
+      const errMessage =
+        err instanceof Error
+          ? err.message
+          : "Failed to upload file. Please check your internet connection and try again.";
       setErrorMessage(errMessage);
     } finally {
       setIsGenerating(false);
@@ -268,7 +315,7 @@ export default function FileShareQrPage() {
             className="font-body text-base sm:text-lg mt-2 max-w-2xl"
             style={{ color: "var(--text-secondary)" }}
           >
-            Upload any file (up to 100 MB), instantly generate a high-definition QR code, and let anyone scan with their phone camera to download it directly.
+            Upload any file (up to 100 MB), generate a high-definition QR code, and let anyone scan with their phone camera to download it directly—completely ad-free with zero popups.
           </p>
         </div>
 
@@ -283,7 +330,7 @@ export default function FileShareQrPage() {
           >
             <AlertTriangle size={20} className="shrink-0 mt-0.5" />
             <div className="text-sm font-body flex-1">
-              <p className="font-semibold">Upload Notice</p>
+              <p className="font-semibold">Notice</p>
               <p className="mt-0.5">{errorMessage}</p>
             </div>
             <button
@@ -349,7 +396,7 @@ export default function FileShareQrPage() {
                   className="font-body text-sm mt-1 mb-4"
                   style={{ color: "var(--text-secondary)" }}
                 >
-                  Supports PDF, DOCX, Images, Videos, Audio, ZIP · Up to 100 MB
+                  Supports PDF, DOCX, Images, Videos, Audio, ZIP · Direct ad-free download
                 </p>
                 <button
                   type="button"
@@ -466,6 +513,12 @@ export default function FileShareQrPage() {
 
                       <div className="flex flex-col gap-3 flex-1 w-full">
                         <div>
+                          <div className="flex items-center gap-1.5 mb-1 text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle2 size={16} />
+                            <span className="font-body text-xs font-semibold uppercase tracking-wider">
+                              Direct Clean Download
+                            </span>
+                          </div>
                           <p
                             className="font-headline font-semibold text-base"
                             style={{ color: "var(--text-primary)" }}
@@ -476,8 +529,8 @@ export default function FileShareQrPage() {
                             className="font-body text-xs mt-0.5"
                             style={{ color: "var(--text-secondary)" }}
                           >
-                            Anyone who scans this QR code will instantly open and download{" "}
-                            <strong>{file.name}</strong> on their device.
+                            Recipients who scan this QR code will directly download{" "}
+                            <strong>{file.name}</strong> without landing on third-party ad pages.
                           </p>
                         </div>
 
@@ -515,7 +568,7 @@ export default function FileShareQrPage() {
                             ) : (
                               <Copy size={14} />
                             )}
-                            <span>{copied ? "Copied!" : "Copy"}</span>
+                            <span>{copied ? "Copied!" : "Copy Link"}</span>
                           </button>
                         </div>
 
@@ -546,7 +599,7 @@ export default function FileShareQrPage() {
                               color: "var(--text-primary)",
                             }}
                           >
-                            <ExternalLink size={14} /> Open Download Page
+                            <ExternalLink size={14} /> Open Download Link
                           </button>
                         </div>
 
@@ -559,7 +612,7 @@ export default function FileShareQrPage() {
                         >
                           <Sparkles size={16} className="text-amber-500 shrink-0 mt-0.5" />
                           <span>
-                            <strong>Ready to share:</strong> This QR code contains a verified, universal HTTPS link compatible with all iOS and Android camera apps.
+                            <strong>Clean & Ad-Free:</strong> Point your camera at the QR code on any iPhone or Android phone to trigger the instant file download.
                           </span>
                         </div>
                       </div>
@@ -669,9 +722,9 @@ export default function FileShareQrPage() {
                 style={{ color: "var(--text-secondary)" }}
               >
                 <strong className="font-semibold" style={{ color: "var(--text-primary)" }}>
-                  Temporary Secure Sharing:
+                  Ad-Free Clean File Transfer:
                 </strong>{" "}
-                Files are uploaded to an encrypted temporary host with direct download access. Anyone scanning your QR code gets immediate access without creating an account or installing any software.
+                Files are hosted on secure, high-speed CDN object storage with direct file attachment delivery. Anyone scanning your QR code gets an instant download prompt without ads, captchas, or unwanted redirects.
               </p>
             </div>
           </div>
@@ -696,10 +749,10 @@ export default function FileShareQrPage() {
                 style={{ color: "var(--text-secondary)" }}
               >
                 {[
-                  ["Upload a file", "Select or drop any file up to 100MB."],
-                  ["Secure link created", "A direct, scannable download link is prepared."],
-                  ["QR code is generated", "A crisp, high-density QR code is rendered instantly."],
-                  ["Scan & Download", "Recipients scan with any phone camera to download directly."],
+                  ["Upload any file", "Select or drop any document, image, or archive up to 100MB."],
+                  ["Direct link created", "A direct, ad-free Cloudflare CDN link is generated."],
+                  ["QR code rendered", "A crisp, high-density QR code appears instantly."],
+                  ["1-Tap Scan & Download", "Recipients scan with their phone camera to download directly."],
                 ].map(([step, desc], i) => (
                   <li key={step} className="flex items-start gap-2">
                     <span

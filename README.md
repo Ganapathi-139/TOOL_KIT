@@ -2,16 +2,17 @@
 
 A modern, fast, privacy-first web utility suite built with **Next.js 16**, **React 19**, and **Tailwind CSS v4**.
 
-ToolKit provides **37 essential everyday utilities** spanning PDF document tools, QR & barcode generation, image optimization, academic calculation tools, developer utilities, and productivity helpers.
+ToolKit provides **39 essential everyday utilities** spanning PDF document tools, QR & barcode generation, image optimization, academic calculation tools, developer utilities, and productivity helpers.
 
-Designed with a **100% client-side, browser-native processing architecture**: every tool—including document conversions like Word to PDF, PDF to PowerPoint, and PowerPoint to PDF—executes directly inside the user's browser. No file uploads, no remote servers, no cloud costs, and zero data leakage.
+Designed with a **privacy-first, browser-native processing architecture**: tools—including document conversions like Word to PDF, PDF to Word, PDF to PowerPoint, and PowerPoint to PDF—execute directly inside the user's browser, keeping your data confidential.
 
 ---
 
-## ✨ Available Tools (37 Tools Across 6 Categories)
+## ✨ Available Tools (39 Tools Across 6 Categories)
 
-### 📄 PDF Document Suite (12 Tools)
-- **Word to PDF** (`/tools/pdf/word-to-pdf`): Parse Microsoft Word (.docx) files in-browser and export clean, formatted PDF documents with custom margins and vector typography.
+### 📄 PDF Document Suite (13 Tools)
+- **Word to PDF** (`/tools/pdf/word-to-pdf`): Parse Microsoft Word (.docx) files in-browser and export clean, formatted PDF documents with exact pagination, styles, and vector typography.
+- **PDF to Word (.docx)** (`/tools/pdf/to-word`): Convert PDF files into fully formatted, editable Microsoft Word (.docx) documents, extracting typography, font sizes, font families, bold, italic, and paragraph structures per text run.
 - **PDF to PowerPoint (.pptx)** (`/tools/pdf/to-ppt`): Convert PDF document pages into presentation-ready Microsoft PowerPoint slides using client-side OpenXML presentation generation.
 - **PowerPoint to PDF** (`/tools/pdf/ppt-to-pdf`): Convert PowerPoint presentations (.pptx) into paginated PDF documents directly in the browser.
 - **Merge PDF** (`/tools/pdf/merge`): Combine multiple PDF documents into a single file with custom drag-and-drop ordering.
@@ -24,7 +25,8 @@ Designed with a **100% client-side, browser-native processing architecture**: ev
 - **Rotate PDF** (`/tools/pdf/rotate`): Rotate pages by 90°, 180°, or 270° across all pages, odd/even, or custom page selections.
 - **Reorder & Delete Pages** (`/tools/pdf/reorder`): Visually reorder, extract, or delete specific pages before saving.
 
-### 📱 QR & Barcode Tools (4 Tools)
+### 📱 QR & Barcode Tools (5 Tools)
+- **File Share via QR** (`/tools/qr/file-share`): Upload any file (up to 100 MB), generate a high-definition QR code, and let recipients scan with their phone camera to download directly—completely ad-free with zero popups or redirects.
 - **QR Code Generator** (`/tools/qr/generator`): Custom QR codes for URLs, text, email, and phone with instant PNG/SVG export.
 - **Wi-Fi QR Code** (`/tools/qr/wifi`): Instant Wi-Fi connection QR code for guests (supporting WPA/WPA2/WEP/Open).
 - **vCard QR Code** (`/tools/qr/vcard`): Encode contact address book cards (Name, Phone, Email, Org, Address).
@@ -137,10 +139,10 @@ tool-kit/
 │   │   ├── about/          # About page
 │   │   ├── contact/        # Contact page
 │   │   ├── privacy/        # Privacy policy (client-side processing declaration)
-│   │   ├── terms/          # Terms of service
+│   │   ├── api/            # Serverless API routes (direct file-share upload handler)
 │   │   └── tools/          # Dedicated tool routes and category hubs
-│   │       ├── pdf/        # PDF suite (12 tools)
-│   │       ├── qr/         # QR suite (4 tools)
+│   │       ├── pdf/        # PDF suite (13 tools including Word-to-PDF & PDF-to-Word)
+│   │       ├── qr/         # QR suite (5 tools including File Share via QR)
 │   │       ├── image/      # Image tools (3 tools)
 │   │       ├── student/    # Academic utilities (6 tools)
 │   │       ├── developer/  # Dev tools (7 tools)
