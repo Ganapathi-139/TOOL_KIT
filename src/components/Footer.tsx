@@ -52,14 +52,6 @@ export function Footer() {
             </Link>
           ))}
         </nav>
-
-        {/* Copyright */}
-        <p
-          className="font-body text-[13px]"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          © 2025 ToolKit. All rights reserved.
-        </p>
       </div>
     </footer>
   );

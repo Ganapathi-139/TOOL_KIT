@@ -27,7 +27,7 @@ export const categories: Category[] = [
     description: "Merge, split, compress, and convert PDF documents in seconds.",
     href: "/tools/pdf",
     icon: "FileText",
-    toolCount: 12,
+    toolCount: 13,
     color: "var(--amber-tint)",
   },
   {

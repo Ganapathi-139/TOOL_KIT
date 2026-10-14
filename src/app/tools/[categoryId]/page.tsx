@@ -70,7 +70,7 @@ export default async function CategoryPage({ params }: Props) {
                   className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-4 font-body text-sm"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  <span>{cat.toolCount} tools available</span>
+                  <span>{catTools.length} tools available</span>
                   <span>·</span>
                   <span>Browser-based</span>
                   <span>·</span>
