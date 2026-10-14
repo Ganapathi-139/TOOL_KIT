@@ -180,21 +180,47 @@ export default function WordToPdfPage() {
       return;
     }
 
+    // ── Collect ALL CSS from the current page (includes docx-preview styles) ──
+    // This is the critical fix: without docx-preview's CSS, section heights are
+    // unknown, and our forced min-height bleeds content across page boundaries.
+    let collectedCss = "";
+    try {
+      Array.from(document.styleSheets).forEach((sheet) => {
+        try {
+          Array.from(sheet.cssRules || []).forEach((rule) => {
+            collectedCss += rule.cssText + "\n";
+          });
+        } catch {
+          // cross-origin sheet — skip
+        }
+      });
+    } catch {
+      // ignore
+    }
+
     printWin.document.write(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>${fileName}</title>
   <style>
+    /* ── Imported from page (includes docx-preview styles) ── */
+    ${collectedCss}
+
+    /* ── Print overrides ── */
     *, *::before, *::after { box-sizing: border-box; }
+
     @page { size: A4 portrait; margin: 0; }
+
     html, body {
-      margin: 0; padding: 0; background: #fff;
-      font-family: "Calibri", "Segoe UI", Arial, sans-serif;
-      font-size: 11pt; color: #000;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #fff !important;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
+
+    /* Wrapper: stack pages vertically, centred */
     .docx-wrapper {
       background: #fff !important;
       padding: 0 !important;
@@ -203,29 +229,41 @@ export default function WordToPdfPage() {
       align-items: center !important;
       gap: 0 !important;
     }
+
+    /*
+     * Each Word page → one PDF page.
+     * Do NOT override width/height — let docx-preview's own dimensions drive
+     * the layout. Only remove decorations and force a page break.
+     */
     .docx-wrapper > section,
     .docx-wrapper > article,
     .docx-page {
-      background: #fff !important;
       box-shadow: none !important;
       border: none !important;
       margin: 0 !important;
-      width: 210mm !important;
-      min-height: 297mm !important;
       page-break-after: always !important;
       break-after: page !important;
       overflow: hidden !important;
+      background: #fff !important;
     }
+
+    /* Last page: no blank trailing page */
     .docx-wrapper > section:last-child,
     .docx-wrapper > article:last-child,
     .docx-page:last-child {
       page-break-after: avoid !important;
       break-after: avoid !important;
     }
+
+    /* Mammoth fallback wrapper */
     .docx-fallback-wrapper {
-      padding: 25.4mm; width: 210mm;
-      min-height: 297mm; margin: 0 auto; background: #fff;
+      padding: 25.4mm;
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      background: #fff;
     }
+
     table { border-collapse: collapse; width: 100%; }
     td, th { border: 1px solid #888; padding: 4px 8px; }
     img { max-width: 100%; height: auto; display: block; }

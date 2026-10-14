@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useRef } from "react";
 import Link from "next/link";
@@ -60,10 +60,8 @@ export default function PdfToWordPage() {
 
     try {
       setStatus("Reading PDF...");
-      // We use pdf.js to extract text from the PDF, then build a .docx using docx.js
       const arrayBuffer = await file.arrayBuffer();
 
-      // Dynamically load pdf.js
       setStatus("Loading PDF engine...");
       await loadScript("/js/pdf.min.js", "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
 
@@ -72,35 +70,80 @@ export default function PdfToWordPage() {
       if (!pdfjsLib) throw new Error("PDF engine failed to load. Please refresh and try again.");
       pdfjsLib.GlobalWorkerOptions.workerSrc = "/js/pdf.worker.min.js";
 
-      setStatus("Extracting text from PDF...");
+      setStatus("Extracting text and formatting from PDF...");
       const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
       const pdfDoc = await loadingTask.promise;
       const numPages = pdfDoc.numPages;
 
-      // Extract text page by page
-      const pages: { pageNum: number; lines: string[] }[] = [];
+      // Each run carries text + formatting
+      type TextRun = {
+        str: string;
+        fontSize: number;      // pt
+        fontFamily: string;
+        bold: boolean;
+        italic: boolean;
+      };
+      type PageData = { pageNum: number; lines: TextRun[][] };
+
+      const pages: PageData[] = [];
+
       for (let i = 1; i <= numPages; i++) {
         setStatus(`Extracting page ${i} of ${numPages}...`);
         const page = await pdfDoc.getPage(i);
-        const textContent = await page.getTextContent();
-        // Group items into lines by Y position
-        const yGroups: Record<number, string[]> = {};
-        for (const item of textContent.items as Array<{ str: string; transform: number[] }>) {
-          const y = Math.round(item.transform[5]);
+        const textContent = await page.getTextContent({ includeMarkedContent: false });
+
+        // styles map: fontName → { fontFamily, ascent, descent, vertical }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const styles: Record<string, any> = textContent.styles || {};
+
+        // Group runs into lines by Y position (rounded to nearest integer)
+        const yGroups: Record<number, TextRun[]> = {};
+
+        for (const rawItem of textContent.items as Array<{
+          str: string;
+          transform: number[];
+          fontName: string;
+          width: number;
+          height: number;
+        }>) {
+          if (!rawItem.str) continue;
+
+          // Font size from transform matrix scale factor
+          const scaleX = rawItem.transform[0];
+          const scaleY = rawItem.transform[3];
+          const rawSize = Math.abs(scaleY !== 0 ? scaleY : scaleX);
+          const fontSize = Math.round(rawSize > 0 ? rawSize : 12);
+
+          // Font metadata from styles
+          const style = styles[rawItem.fontName] || {};
+          const fontFamilyRaw: string = style.fontFamily || "";
+
+          // Detect bold / italic from font family name
+          const fnLower = (rawItem.fontName + fontFamilyRaw).toLowerCase();
+          const bold = fnLower.includes("bold") || fnLower.includes("heavy") || fnLower.includes("black");
+          const italic = fnLower.includes("italic") || fnLower.includes("oblique");
+
+          // Strip common weight/style suffixes to get a clean family name
+          const fontFamily = fontFamilyRaw
+            .replace(/[-_ ](bold|italic|oblique|regular|medium|light|heavy|black|condensed|expanded|semibold|extrabold)/gi, "")
+            .trim() || "Calibri";
+
+          const y = Math.round(rawItem.transform[5]);
           if (!yGroups[y]) yGroups[y] = [];
-          yGroups[y].push(item.str);
+          yGroups[y].push({ str: rawItem.str, fontSize, fontFamily, bold, italic });
         }
-        const lines = Object.keys(yGroups)
+
+        // Sort Y positions descending (top of page first in PDF coords)
+        const sortedYs = Object.keys(yGroups)
           .map(Number)
-          .sort((a, b) => b - a) // top to bottom
-          .map((y) => yGroups[y].join(""));
+          .sort((a, b) => b - a);
+
+        const lines: TextRun[][] = sortedYs.map((y) => yGroups[y]);
         pages.push({ pageNum: i, lines });
       }
 
       setStatus("Building Word document (.docx)...");
-
-      // Build a minimal .docx using the Open XML ZIP structure
-      const docxBlob = await buildDocx(pages, file.name);
+      const docxBlob = await buildDocx(pages);
 
       if (docxUrl) URL.revokeObjectURL(docxUrl);
       const url = URL.createObjectURL(docxBlob);
@@ -136,56 +179,61 @@ export default function PdfToWordPage() {
     });
   };
 
-  /**
-   * Build a minimal .docx (Open XML) file with the extracted page text.
-   * Each PDF page becomes a paragraph group separated by a page break.
-   */
+  // ────────────────────────────────────────────────────────────
+  // Build a .docx (Open XML ZIP) file preserving font size,
+  // font family, bold and italic for every extracted text run.
+  // ────────────────────────────────────────────────────────────
+  type TextRun = { str: string; fontSize: number; fontFamily: string; bold: boolean; italic: boolean; };
+
+  const xmlEscape = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
   const buildDocx = async (
-    pages: { pageNum: number; lines: string[] }[],
-    _origName: string
+    pages: { pageNum: number; lines: TextRun[][] }[]
   ): Promise<Blob> => {
-    // Build the word/document.xml content
-    const xmlLines: string[] = [];
+
+    const xmlParagraphs: string[] = [];
+
     pages.forEach(({ lines }, pageIndex) => {
-      lines.forEach((line) => {
-        const escaped = line
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;");
-        xmlLines.push(`<w:p><w:r><w:t xml:space="preserve">${escaped}</w:t></w:r></w:p>`);
+      lines.forEach((runs) => {
+        // Each line → one paragraph; each run → one <w:r> with formatting
+        const wruns = runs.map((run) => {
+          const szHalfPt = Math.max(8, Math.min(run.fontSize * 2, 144)); // clamp 4–72pt
+          const rpr = [
+            `<w:rFonts w:ascii="${xmlEscape(run.fontFamily)}" w:hAnsi="${xmlEscape(run.fontFamily)}"/>`,
+            `<w:sz w:val="${szHalfPt}"/>`,
+            `<w:szCs w:val="${szHalfPt}"/>`,
+            run.bold   ? `<w:b/>` : "",
+            run.italic ? `<w:i/>` : "",
+          ].filter(Boolean).join("");
+
+          return [
+            `<w:r>`,
+            `  <w:rPr>${rpr}</w:rPr>`,
+            `  <w:t xml:space="preserve">${xmlEscape(run.str)}</w:t>`,
+            `</w:r>`,
+          ].join("");
+        }).join("");
+
+        xmlParagraphs.push(`<w:p>${wruns}</w:p>`);
       });
+
       // Page break between pages (not after last)
       if (pageIndex < pages.length - 1) {
-        xmlLines.push(
-          `<w:p><w:r><w:lastRenderedPageBreak/><w:br w:type="page"/></w:r></w:p>`
-        );
+        xmlParagraphs.push(`<w:p><w:r><w:br w:type="page"/></w:r></w:p>`);
       }
     });
 
     const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
-  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-  xmlns:o="urn:schemas-microsoft-com:office:office"
+<w:document
   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-  xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
-  xmlns:v="urn:schemas-microsoft-com:vml"
-  xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing"
-  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
-  xmlns:w10="urn:schemas-microsoft-com:office:word"
-  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-  xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
-  xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
-  xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk"
-  xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml"
-  xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
-  mc:Ignorable="w14 wp14">
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
+    ${xmlParagraphs.join("\n    ")}
     <w:sectPr>
       <w:pgSz w:w="12240" w:h="15840"/>
       <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
     </w:sectPr>
-    ${xmlLines.join("\n    ")}
   </w:body>
 </w:document>`;
 
@@ -205,8 +253,6 @@ export default function PdfToWordPage() {
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`;
 
-    // Build ZIP using JSZip or fflate (use JSZip if available, else use manual approach)
-    // Load JSZip if needed
     await loadJsZip();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const JSZip = (window as any).JSZip;
@@ -218,7 +264,10 @@ export default function PdfToWordPage() {
     zip.file("word/document.xml", documentXml);
     zip.file("word/_rels/document.xml.rels", wordRelsXml);
 
-    const blob: Blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    const blob: Blob = await zip.generateAsync({
+      type: "blob",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
     return blob;
   };
 
