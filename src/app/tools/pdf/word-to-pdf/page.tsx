@@ -159,82 +159,32 @@ export default function WordToPdfPage() {
         throw new Error("PDF generation library is still loading. Please try again in a few moments.");
       }
 
-      // Create an isolated sandbox element with exact paper dimensions
-      // to eliminate any parent grid offsets, padding clipping, or responsive shifts
-      const sandbox = document.createElement("div");
-      const targetWidth = pageSize === "a4" ? "794px" : "816px";
-
-      sandbox.style.position = "fixed";
-      sandbox.style.left = "0px";
-      sandbox.style.top = "0px";
-      sandbox.style.width = targetWidth;
-      sandbox.style.backgroundColor = "#ffffff";
-      sandbox.style.color = "#111827";
-      sandbox.style.padding = "24px 32px";
-      sandbox.style.boxSizing = "border-box";
-      sandbox.style.zIndex = "-9999";
-      sandbox.style.pointerEvents = "none";
-      sandbox.style.fontFamily =
-        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
-
-      sandbox.innerHTML = `
-        <style>
-          * { box-sizing: border-box !important; }
-          .pdf-export-content {
-            font-size: 11pt;
-            line-height: 1.6;
-            color: #1e293b;
-            width: 100%;
-          }
-          .pdf-export-content h1 { font-size: 20pt; font-weight: 700; color: #0f172a; margin: 18px 0 10px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; page-break-after: avoid; }
-          .pdf-export-content h2 { font-size: 16pt; font-weight: 700; color: #1e293b; margin: 16px 0 8px 0; page-break-after: avoid; }
-          .pdf-export-content h3 { font-size: 13pt; font-weight: 600; color: #334155; margin: 12px 0 6px 0; page-break-after: avoid; }
-          .pdf-export-content p { margin: 0 0 12px 0; color: #1e293b; }
-          .pdf-export-content table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 10pt; page-break-inside: avoid; }
-          .pdf-export-content th, .pdf-export-content td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
-          .pdf-export-content th { background-color: #f8fafc; font-weight: 600; }
-          .pdf-export-content img { max-width: 100%; height: auto; display: block; margin: 14px auto; }
-          .pdf-export-content ul, .pdf-export-content ol { margin: 8px 0 12px 24px; padding-left: 8px; }
-          .pdf-export-content li { margin-bottom: 4px; }
-          .pdf-export-content strong { font-weight: 700; color: #0f172a; }
-          .pdf-export-content em { font-style: italic; }
-        </style>
-        <div class="pdf-export-content">
-          ${htmlContent}
-        </div>
-      `;
-
-      document.body.appendChild(sandbox);
+      const container = renderContainerRef.current;
+      if (!container) {
+        throw new Error("Document preview container not found. Please try re-selecting your file.");
+      }
 
       const opt = {
-        margin: [10, 10, 10, 10], // 10mm uniform margin
+        margin: [10, 10, 10, 10], // 10mm margins
         filename: file.name.replace(/\.[^/.]+$/, "") + ".pdf",
         image: { type: "jpeg", quality: 0.98 },
         html2canvas: {
           scale: 2,
           useCORS: true,
           logging: false,
-          scrollX: 0,
-          scrollY: 0,
         },
         jsPDF: { unit: "mm", format: pageSize, orientation: "portrait" as const },
         pagebreak: { mode: ["css", "legacy"] },
       };
 
-      try {
-        const pdfBlob: Blob = await window.html2pdf().set(opt).from(sandbox).outputPdf("blob");
+      const pdfBlob: Blob = await window.html2pdf().set(opt).from(container).outputPdf("blob");
 
-        if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-        const url = URL.createObjectURL(pdfBlob);
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+      const url = URL.createObjectURL(pdfBlob);
 
-        setPdfBlobUrl(url);
-        setPdfFileSize(pdfBlob.size);
-        setConversionStatus("Conversion complete!");
-      } finally {
-        if (sandbox.parentNode) {
-          sandbox.parentNode.removeChild(sandbox);
-        }
-      }
+      setPdfBlobUrl(url);
+      setPdfFileSize(pdfBlob.size);
+      setConversionStatus("Conversion complete!");
     } catch (err: unknown) {
       console.error("Word to PDF generation failed:", err);
       setErrorMessage(
@@ -630,26 +580,34 @@ export default function WordToPdfPage() {
 
                     {/* Paper Document Container with authentic typography */}
                     <div
-                      className="border rounded-xl p-6 sm:p-10 shadow-sm overflow-x-auto"
+                      ref={renderContainerRef}
+                      className="border rounded-xl shadow-sm"
                       style={{
                         backgroundColor: "#ffffff",
                         color: "#1e293b",
                         borderColor: "var(--border-warm)",
+                        padding: "36px 48px",
+                        boxSizing: "border-box",
+                        width: "100%",
+                        maxWidth: pageSize === "a4" ? "800px" : "820px",
+                        margin: "0 auto",
                       }}
                     >
                       <style>{`
                         .word-document-sheet {
                           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
                           font-size: 11pt;
-                          line-height: 1.65;
+                          line-height: 1.6;
                           color: #1e293b;
-                          max-width: 100%;
+                          width: 100%;
+                          word-wrap: break-word;
+                          overflow-wrap: break-word;
                         }
-                        .word-document-sheet h1 { font-size: 20pt; font-weight: 700; color: #0f172a; margin: 18px 0 10px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
-                        .word-document-sheet h2 { font-size: 16pt; font-weight: 700; color: #1e293b; margin: 16px 0 8px 0; }
-                        .word-document-sheet h3 { font-size: 13pt; font-weight: 600; color: #334155; margin: 12px 0 6px 0; }
+                        .word-document-sheet h1 { font-size: 20pt; font-weight: 700; color: #0f172a; margin: 18px 0 10px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; page-break-after: avoid; }
+                        .word-document-sheet h2 { font-size: 16pt; font-weight: 700; color: #1e293b; margin: 16px 0 8px 0; page-break-after: avoid; }
+                        .word-document-sheet h3 { font-size: 13pt; font-weight: 600; color: #334155; margin: 12px 0 6px 0; page-break-after: avoid; }
                         .word-document-sheet p { margin: 0 0 12px 0; color: #1e293b; }
-                        .word-document-sheet table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 10pt; }
+                        .word-document-sheet table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 10pt; page-break-inside: avoid; }
                         .word-document-sheet th, .word-document-sheet td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
                         .word-document-sheet th { background-color: #f8fafc; font-weight: 600; }
                         .word-document-sheet img { max-width: 100%; height: auto; display: block; margin: 14px auto; border-radius: 4px; }
@@ -659,7 +617,6 @@ export default function WordToPdfPage() {
                         .word-document-sheet em { font-style: italic; }
                       `}</style>
                       <div
-                        ref={renderContainerRef}
                         className="word-document-sheet"
                         dangerouslySetInnerHTML={{ __html: htmlContent }}
                       />
