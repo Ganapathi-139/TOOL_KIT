@@ -19,7 +19,9 @@ export interface Html2PdfOptions {
     scale?: number;
     useCORS?: boolean;
     logging?: boolean;
-    letterRendering?: boolean;
+    scrollX?: number;
+    scrollY?: number;
+    windowWidth?: number;
   };
   jsPDF?: {
     unit?: string;
@@ -43,11 +45,33 @@ export interface Html2PdfInstance {
   outputPdf: (type: "blob" | "dataurlstring" | "arraybuffer") => Promise<any>;
 }
 
+export interface DocxPreviewOptions {
+  className?: string;
+  inWrapper?: boolean;
+  ignoreWidth?: boolean;
+  ignoreHeight?: boolean;
+  breakPages?: boolean;
+  useBase64URL?: boolean;
+  renderHeaders?: boolean;
+  renderFooters?: boolean;
+  renderEndnotes?: boolean;
+}
+
 declare global {
   interface Window {
     mammoth?: {
       convertToHtml: (options: MammothOptions) => Promise<MammothResult>;
     };
     html2pdf?: (element?: HTMLElement, options?: Html2PdfOptions) => Html2PdfInstance;
+    html2canvas?: (element: HTMLElement, options?: any) => Promise<HTMLCanvasElement>;
+    JSZip?: any;
+    docx?: {
+      renderAsync: (
+        data: Blob | ArrayBuffer | Uint8Array,
+        bodyContainer: HTMLElement,
+        styleContainer?: HTMLElement | null,
+        options?: DocxPreviewOptions
+      ) => Promise<any>;
+    };
   }
 }
