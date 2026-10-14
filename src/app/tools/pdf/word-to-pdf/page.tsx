@@ -15,9 +15,9 @@ import {
   FileType2,
   FilePlus2,
   Scissors,
-  Eye,
   RotateCw,
   Sparkles,
+  FileText,
 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -33,13 +33,12 @@ export default function WordToPdfPage() {
   const [pageSize, setPageSize] = useState<"a4" | "letter">("a4");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const printFrameRef = useRef<HTMLIFrameElement>(null);
   const renderContainerRef = useRef<HTMLDivElement>(null);
 
-  // Clean up object URLs on unmount or reset
+  // Clean up object URLs on unmount or file reset
   useEffect(() => {
     return () => {
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
@@ -83,7 +82,16 @@ export default function WordToPdfPage() {
     return (bytes / (1024 * 1024)).toFixed(2) + " MB";
   };
 
-  const handleFile = (selected: File) => {
+  const waitForEngines = async (): Promise<boolean> => {
+    if (typeof window === "undefined") return false;
+    for (let i = 0; i < 30; i++) {
+      if (window.mammoth && window.html2pdf) return true;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    return Boolean(window.mammoth && window.html2pdf);
+  };
+
+  const handleFile = async (selected: File) => {
     setErrorMessage(null);
     if (pdfBlobUrl) {
       URL.revokeObjectURL(pdfBlobUrl);
@@ -91,7 +99,6 @@ export default function WordToPdfPage() {
     }
     setPdfFileSize(null);
     setHtmlContent("");
-    setShowPreview(false);
     setConversionStatus("");
 
     const ext = selected.name.toLowerCase();
@@ -102,65 +109,74 @@ export default function WordToPdfPage() {
 
     if (ext.endsWith(".doc") && !ext.endsWith(".docx")) {
       setErrorMessage(
-        "Legacy binary .doc files are not supported by modern web browser parsers. Please open your document in Microsoft Word, Google Docs, or LibreOffice and save/export as .docx before converting."
+        "Legacy binary .doc files are not supported by modern web browser parsers. Please open your document in Microsoft Word, Google Docs, or LibreOffice and choose 'Save As .docx' before converting."
       );
       return;
     }
 
     setFile(selected);
-  };
-
-  const waitForEngines = async (): Promise<boolean> => {
-    if (typeof window === "undefined") return false;
-    for (let i = 0; i < 25; i++) {
-      if (window.mammoth && window.html2pdf) return true;
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    return Boolean(window.mammoth && window.html2pdf);
-  };
-
-  const convertWordToPdf = async () => {
-    if (!file) return;
-
     setIsProcessing(true);
-    setErrorMessage(null);
-    setConversionStatus("Checking conversion engines...");
+    setConversionStatus("Reading Word document (.docx)...");
 
     try {
       const ready = await waitForEngines();
-      if (!ready || !window.mammoth || !window.html2pdf) {
-        throw new Error("Conversion libraries are still initializing. Please check your internet connection and try again.");
+      if (!ready || !window.mammoth) {
+        throw new Error("Word processing engine is still initializing. Please wait a few seconds and try again.");
       }
 
-      setConversionStatus("Reading Word document (.docx)...");
-      const buffer = await file.arrayBuffer();
+      const buffer = await selected.arrayBuffer();
+      setConversionStatus("Extracting document text, tables, and images with Mammoth...");
 
-      setConversionStatus("Parsing Word elements, tables, and images with Mammoth...");
-      const mammothResult = await window.mammoth.convertToHtml({ arrayBuffer: buffer });
-      const convertedHtml = mammothResult.value;
+      const result = await window.mammoth.convertToHtml({ arrayBuffer: buffer });
+      const html = result.value;
 
-      if (!convertedHtml || !convertedHtml.trim()) {
+      if (!html || !html.trim()) {
         throw new Error("The Word document appears to be empty or contains unsupported content.");
       }
 
-      setHtmlContent(convertedHtml);
+      setHtmlContent(html);
+      setConversionStatus("Document loaded! Click 'Convert to PDF' below to generate your PDF.");
+    } catch (err: unknown) {
+      console.error("Word parsing failed:", err);
+      setErrorMessage(
+        err instanceof Error ? err.message : "Failed to read the Word document. Please ensure it is a valid .docx file."
+      );
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
-      // Give React DOM a moment to update the container
-      setConversionStatus("Formatting document pages...");
-      await new Promise((r) => setTimeout(r, 150));
+  const convertWordToPdf = async () => {
+    if (!file || !htmlContent) return;
+
+    setIsProcessing(true);
+    setErrorMessage(null);
+    setConversionStatus("Rendering high-definition PDF...");
+
+    try {
+      const ready = await waitForEngines();
+      if (!ready || !window.html2pdf) {
+        throw new Error("PDF generation library is still loading. Please try again in a few moments.");
+      }
 
       const container = renderContainerRef.current;
       if (!container) {
-        throw new Error("Render pipeline container not ready. Please try again.");
+        throw new Error("Document preview container not found. Please try re-selecting your file.");
       }
 
-      setConversionStatus("Rendering high-definition PDF...");
-
+      // Ensure the container is scrolled into regular view bounds for html2canvas
       const opt = {
         margin: [12, 12, 12, 12],
         filename: file.name.replace(/\.[^/.]+$/, "") + ".pdf",
         image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          scrollY: 0,
+          scrollX: 0,
+          windowWidth: 1024,
+        },
         jsPDF: { unit: "mm", format: pageSize, orientation: "portrait" as const },
         pagebreak: { mode: ["avoid-all", "css", "legacy"] },
       };
@@ -174,9 +190,9 @@ export default function WordToPdfPage() {
       setPdfFileSize(pdfBlob.size);
       setConversionStatus("Conversion complete!");
     } catch (err: unknown) {
-      console.error("Word to PDF conversion failed:", err);
+      console.error("Word to PDF generation failed:", err);
       setErrorMessage(
-        err instanceof Error ? err.message : "Failed to convert Word document to PDF. Please try again."
+        err instanceof Error ? err.message : "Failed to generate PDF. Please try the 'Print / Vector PDF' option."
       );
     } finally {
       setIsProcessing(false);
@@ -206,8 +222,8 @@ export default function WordToPdfPage() {
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               font-size: 11pt;
-              line-height: 1.5;
-              color: #111;
+              line-height: 1.6;
+              color: #111827;
               margin: 0;
               padding: 10px;
             }
@@ -218,7 +234,7 @@ export default function WordToPdfPage() {
               margin-top: 18px;
               margin-bottom: 8px;
             }
-            p { margin: 0 0 10px 0; }
+            p { margin: 0 0 12px 0; }
             img {
               max-width: 100%;
               height: auto;
@@ -229,7 +245,7 @@ export default function WordToPdfPage() {
             table {
               width: 100%;
               border-collapse: collapse;
-              margin: 14px 0;
+              margin: 16px 0;
               page-break-inside: avoid;
             }
             th, td {
@@ -242,8 +258,8 @@ export default function WordToPdfPage() {
               font-weight: 600;
             }
             ul, ol {
-              margin: 8px 0 12px 20px;
-              padding-left: 10px;
+              margin: 8px 0 12px 24px;
+              padding-left: 8px;
             }
             li { margin-bottom: 4px; }
           </style>
@@ -445,7 +461,7 @@ export default function WordToPdfPage() {
                       }}
                     >
                       <Sparkles size={16} style={{ color: "var(--amber-primary)" }} />
-                      <span>Engine: Mammoth.js + html2pdf pipeline</span>
+                      <span>Engine: Mammoth.js + html2pdf</span>
                     </div>
                   </div>
                 </div>
@@ -466,7 +482,7 @@ export default function WordToPdfPage() {
                 )}
 
                 {/* Convert Button */}
-                {!pdfBlobUrl && (
+                {htmlContent && !pdfBlobUrl && (
                   <button
                     type="button"
                     onClick={convertWordToPdf}
@@ -477,12 +493,12 @@ export default function WordToPdfPage() {
                     {isProcessing ? (
                       <>
                         <Loader2 size={18} className="animate-spin" />
-                        <span>Converting Document...</span>
+                        <span>Generating PDF...</span>
                       </>
                     ) : (
                       <>
                         <FileCheck size={18} />
-                        <span>Convert to PDF</span>
+                        <span>Convert & Download PDF</span>
                       </>
                     )}
                   </button>
@@ -540,66 +556,72 @@ export default function WordToPdfPage() {
 
                       <button
                         type="button"
-                        onClick={() => setShowPreview(!showPreview)}
-                        className="px-4 py-3 rounded-xl border font-body text-sm font-medium flex items-center justify-center gap-2 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
-                        style={{
-                          borderColor: "var(--border-warm)",
-                          color: "var(--text-secondary)",
-                        }}
+                        onClick={convertWordToPdf}
+                        disabled={isProcessing}
+                        className="px-4 py-3 rounded-xl border font-body text-xs font-medium flex items-center justify-center gap-1.5 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ml-auto"
+                        style={{ borderColor: "var(--border-warm)", color: "var(--text-secondary)" }}
                       >
-                        <Eye size={16} />
-                        <span>{showPreview ? "Hide Preview" : "Preview PDF"}</span>
+                        Re-generate PDF
                       </button>
                     </div>
+                  </div>
+                )}
 
-                    {showPreview && (
-                      <div className="mt-3 border rounded-xl overflow-hidden" style={{ borderColor: "var(--border-warm)", height: "480px" }}>
-                        <iframe
-                          src={pdfBlobUrl}
-                          title="Converted PDF Preview"
-                          className="w-full h-full"
-                        />
+                {/* Visible Document Preview Paper Sheet */}
+                {htmlContent && (
+                  <div className="flex flex-col gap-3 pt-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText size={16} style={{ color: "var(--amber-primary)" }} />
+                        <span className="font-headline font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
+                          Document Content Preview
+                        </span>
                       </div>
-                    )}
+                      <span className="text-xs font-body text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full font-medium">
+                        Ready to convert
+                      </span>
+                    </div>
+
+                    {/* Paper Document Container with authentic typography */}
+                    <div
+                      className="border rounded-xl p-6 sm:p-10 shadow-sm overflow-x-auto"
+                      style={{
+                        backgroundColor: "#ffffff",
+                        color: "#1e293b",
+                        borderColor: "var(--border-warm)",
+                      }}
+                    >
+                      <style>{`
+                        .word-document-sheet {
+                          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                          font-size: 11pt;
+                          line-height: 1.65;
+                          color: #1e293b;
+                          max-width: 100%;
+                        }
+                        .word-document-sheet h1 { font-size: 20pt; font-weight: 700; color: #0f172a; margin: 18px 0 10px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
+                        .word-document-sheet h2 { font-size: 16pt; font-weight: 700; color: #1e293b; margin: 16px 0 8px 0; }
+                        .word-document-sheet h3 { font-size: 13pt; font-weight: 600; color: #334155; margin: 12px 0 6px 0; }
+                        .word-document-sheet p { margin: 0 0 12px 0; color: #1e293b; }
+                        .word-document-sheet table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 10pt; }
+                        .word-document-sheet th, .word-document-sheet td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
+                        .word-document-sheet th { background-color: #f8fafc; font-weight: 600; }
+                        .word-document-sheet img { max-width: 100%; height: auto; display: block; margin: 14px auto; border-radius: 4px; }
+                        .word-document-sheet ul, .word-document-sheet ol { margin: 8px 0 12px 24px; padding-left: 8px; }
+                        .word-document-sheet li { margin-bottom: 4px; }
+                        .word-document-sheet strong { font-weight: 700; color: #0f172a; }
+                        .word-document-sheet em { font-style: italic; }
+                      `}</style>
+                      <div
+                        ref={renderContainerRef}
+                        className="word-document-sheet"
+                        dangerouslySetInnerHTML={{ __html: htmlContent }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
             )}
-
-            {/* Hidden / Off-screen render container used by html2pdf */}
-            <div
-              style={{
-                position: "absolute",
-                left: "-9999px",
-                top: 0,
-                width: pageSize === "a4" ? "210mm" : "8.5in",
-                background: "#ffffff",
-                color: "#111827",
-                padding: "16mm",
-                fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-                fontSize: "12pt",
-                lineHeight: "1.6",
-                boxSizing: "border-box",
-              }}
-              ref={renderContainerRef}
-            >
-              <style>{`
-                .word-render-box h1 { font-size: 22pt; font-weight: 700; color: #0f172a; margin: 20px 0 10px 0; }
-                .word-render-box h2 { font-size: 17pt; font-weight: 700; color: #1e293b; margin: 16px 0 8px 0; }
-                .word-render-box h3 { font-size: 14pt; font-weight: 600; color: #334155; margin: 14px 0 6px 0; }
-                .word-render-box p { margin: 0 0 12px 0; color: #1e293b; }
-                .word-render-box table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 10pt; }
-                .word-render-box th, .word-render-box td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
-                .word-render-box th { background-color: #f8fafc; font-weight: 600; }
-                .word-render-box img { max-width: 100%; height: auto; display: block; margin: 12px auto; }
-                .word-render-box ul, .word-render-box ol { margin: 8px 0 12px 24px; padding-left: 8px; }
-                .word-render-box li { margin-bottom: 4px; }
-              `}</style>
-              <div
-                className="word-render-box"
-                dangerouslySetInnerHTML={{ __html: htmlContent }}
-              />
-            </div>
 
             {/* Privacy Card */}
             <div
