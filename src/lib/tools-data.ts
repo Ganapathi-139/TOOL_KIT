@@ -36,7 +36,7 @@ export const categories: Category[] = [
     description: "Generate custom QR codes for links, Wi-Fi, vCards, and text.",
     href: "/tools/qr",
     icon: "QrCode",
-    toolCount: 4,
+    toolCount: 5,
     color: "var(--amber-tint)",
   },
   {
@@ -177,6 +177,14 @@ export const tools: Tool[] = [
     icon: "Presentation",
     categoryId: "pdf",
   },
+  {
+    id: "pdf-to-word",
+    name: "PDF to Word",
+    description: "Extract text from a PDF and convert it into an editable Word (.docx) document.",
+    href: "/tools/pdf/to-word",
+    icon: "FileText",
+    categoryId: "pdf",
+  },
 
   // QR Code Tools
   {
@@ -211,6 +219,14 @@ export const tools: Tool[] = [
     description: "Scan and decode a QR code image from your device.",
     href: "/tools/qr/scanner",
     icon: "ScanLine",
+    categoryId: "qr",
+  },
+  {
+    id: "file-share-qr",
+    name: "File Share via QR",
+    description: "Upload a file, generate a QR code, and let others scan to download it instantly.",
+    href: "/tools/qr/file-share",
+    icon: "FileUp",
     categoryId: "qr",
   },
 
