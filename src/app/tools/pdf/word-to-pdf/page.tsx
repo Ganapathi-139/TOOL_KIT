@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
-  FileText,
   Upload,
   Download,
   Shield,
@@ -14,38 +13,71 @@ import {
   Printer,
   FileCheck,
   FileType2,
-  ImageDown,
-  Minimize2,
+  FilePlus2,
+  Scissors,
+  Eye,
+  RotateCw,
+  Sparkles,
 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import JSZip from "jszip";
 
 export default function WordToPdfPage() {
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [conversionStatus, setConversionStatus] = useState<string>("");
   const [htmlContent, setHtmlContent] = useState<string>("");
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [pdfFileSize, setPdfFileSize] = useState<number | null>(null);
-  const [pageCount, setPageCount] = useState<number>(0);
   const [pageSize, setPageSize] = useState<"a4" | "letter">("a4");
-  const [fontSize, setFontSize] = useState<number>(11);
-  const [lineSpacing, setLineSpacing] = useState<number>(1.35);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const printFrameRef = useRef<HTMLIFrameElement>(null);
+  const renderContainerRef = useRef<HTMLDivElement>(null);
 
-  // Clean up object URLs on unmount
+  // Clean up object URLs on unmount or reset
   useEffect(() => {
     return () => {
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
     };
   }, [pdfBlobUrl]);
 
+  // Dynamically load Mammoth.js and html2pdf.js scripts
+  useEffect(() => {
+    const loadScript = (src: string, fallbackSrc: string, checkName: "mammoth" | "html2pdf") => {
+      if (typeof window === "undefined" || (window as unknown as Record<string, unknown>)[checkName]) {
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = src;
+      script.async = true;
+      script.onerror = () => {
+        const fallback = document.createElement("script");
+        fallback.src = fallbackSrc;
+        fallback.async = true;
+        document.body.appendChild(fallback);
+      };
+      document.body.appendChild(script);
+    };
+
+    loadScript(
+      "/js/mammoth.browser.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js",
+      "mammoth"
+    );
+    loadScript(
+      "/js/html2pdf.bundle.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js",
+      "html2pdf"
+    );
+  }, []);
+
   const formatFileSize = (bytes: number) => {
+    if (bytes <= 0) return "0 B";
     if (bytes < 1024) return bytes + " B";
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
     return (bytes / (1024 * 1024)).toFixed(2) + " MB";
@@ -59,7 +91,8 @@ export default function WordToPdfPage() {
     }
     setPdfFileSize(null);
     setHtmlContent("");
-    setPageCount(0);
+    setShowPreview(false);
+    setConversionStatus("");
 
     const ext = selected.name.toLowerCase();
     if (!ext.endsWith(".docx") && !ext.endsWith(".doc")) {
@@ -69,7 +102,7 @@ export default function WordToPdfPage() {
 
     if (ext.endsWith(".doc") && !ext.endsWith(".docx")) {
       setErrorMessage(
-        "Legacy binary .doc files are not natively supported in modern browser parsers. Please save or export your document as .docx in Word or Google Docs before converting."
+        "Legacy binary .doc files are not supported by modern web browser parsers. Please open your document in Microsoft Word, Google Docs, or LibreOffice and save/export as .docx before converting."
       );
       return;
     }
@@ -77,238 +110,73 @@ export default function WordToPdfPage() {
     setFile(selected);
   };
 
+  const waitForEngines = async (): Promise<boolean> => {
+    if (typeof window === "undefined") return false;
+    for (let i = 0; i < 25; i++) {
+      if (window.mammoth && window.html2pdf) return true;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return Boolean(window.mammoth && window.html2pdf);
+  };
+
   const convertWordToPdf = async () => {
     if (!file) return;
 
     setIsProcessing(true);
     setErrorMessage(null);
+    setConversionStatus("Checking conversion engines...");
 
     try {
+      const ready = await waitForEngines();
+      if (!ready || !window.mammoth || !window.html2pdf) {
+        throw new Error("Conversion libraries are still initializing. Please check your internet connection and try again.");
+      }
+
+      setConversionStatus("Reading Word document (.docx)...");
       const buffer = await file.arrayBuffer();
-      const zip = await JSZip.loadAsync(buffer);
 
-      if (!zip.files["word/document.xml"]) {
-        throw new Error(
-          "Invalid or unsupported Word document structure. Please ensure it is a valid .docx file."
-        );
+      setConversionStatus("Parsing Word elements, tables, and images with Mammoth...");
+      const mammothResult = await window.mammoth.convertToHtml({ arrayBuffer: buffer });
+      const convertedHtml = mammothResult.value;
+
+      if (!convertedHtml || !convertedHtml.trim()) {
+        throw new Error("The Word document appears to be empty or contains unsupported content.");
       }
 
-      // Check document rels for images
-      const mediaMap: Record<string, string> = {};
-      if (zip.files["word/_rels/document.xml.rels"]) {
-        const relsText = await zip.files["word/_rels/document.xml.rels"].async("text");
-        const relsDoc = new DOMParser().parseFromString(relsText, "text/xml");
-        const rels = Array.from(relsDoc.getElementsByTagName("Relationship"));
-        for (const rel of rels) {
-          const id = rel.getAttribute("Id");
-          const target = rel.getAttribute("Target");
-          if (id && target && target.includes("media/")) {
-            const mediaPath = target.startsWith("media/") ? `word/${target}` : `word/${target.replace(/^\.\.\//, "")}`;
-            if (zip.files[mediaPath]) {
-              const b64 = await zip.files[mediaPath].async("base64");
-              const ext = mediaPath.endsWith(".png") ? "png" : "jpeg";
-              mediaMap[id] = `data:image/${ext};base64,${b64}`;
-            }
-          }
-        }
+      setHtmlContent(convertedHtml);
+
+      // Give React DOM a moment to update the container
+      setConversionStatus("Formatting document pages...");
+      await new Promise((r) => setTimeout(r, 150));
+
+      const container = renderContainerRef.current;
+      if (!container) {
+        throw new Error("Render pipeline container not ready. Please try again.");
       }
 
-      const docXmlText = await zip.files["word/document.xml"].async("text");
-      const doc = new DOMParser().parseFromString(docXmlText, "text/xml");
+      setConversionStatus("Rendering high-definition PDF...");
 
-      // Extract paragraphs and tables
-      const body = doc.getElementsByTagName("w:body")[0];
-      if (!body) throw new Error("Could not find document body in this Word file.");
+      const opt = {
+        margin: [12, 12, 12, 12],
+        filename: file.name.replace(/\.[^/.]+$/, "") + ".pdf",
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: "mm", format: pageSize, orientation: "portrait" as const },
+        pagebreak: { mode: ["avoid-all", "css", "legacy"] },
+      };
 
-      let generatedHtml = "";
-      const textBlocks: { type: "heading" | "paragraph" | "list"; text: string; level?: number }[] = [];
-
-      for (const node of Array.from(body.childNodes)) {
-        if (node.nodeName === "w:p") {
-          const p = node as Element;
-          const pStyle = p.getElementsByTagName("w:pStyle")[0]?.getAttribute("w:val") || "";
-          const isHeading = pStyle.toLowerCase().includes("heading") || pStyle.toLowerCase().includes("title");
-          const isList = p.getElementsByTagName("w:numPr").length > 0;
-
-          const runs = Array.from(p.getElementsByTagName("w:r"));
-          let pText = "";
-          let pHtml = "";
-
-          for (const r of runs) {
-            const isBold = r.getElementsByTagName("w:b").length > 0;
-            const isItalic = r.getElementsByTagName("w:i").length > 0;
-            const isUnderline = r.getElementsByTagName("w:u").length > 0;
-            const textNode = r.getElementsByTagName("w:t")[0];
-            const text = textNode?.textContent || "";
-
-            if (text) {
-              pText += text;
-              let styledText = text
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;");
-              if (isBold) styledText = `<strong>${styledText}</strong>`;
-              if (isItalic) styledText = `<em>${styledText}</em>`;
-              if (isUnderline) styledText = `<u>${styledText}</u>`;
-              pHtml += styledText;
-            }
-
-            const blip = r.getElementsByTagName("a:blip")[0];
-            if (blip) {
-              const embedId = blip.getAttribute("r:embed");
-              if (embedId && mediaMap[embedId]) {
-                pHtml += `<img src="${mediaMap[embedId]}" alt="Document Image" style="max-width:100%;height:auto;margin:12px auto;display:block;" />`;
-              }
-            }
-          }
-
-          if (pText.trim()) {
-            if (isHeading) {
-              generatedHtml += `<h2 style="font-size:18pt;font-weight:700;margin:16px 0 8px 0;color:#0f172a;">${pHtml}</h2>`;
-              textBlocks.push({ type: "heading", text: pText.trim() });
-            } else if (isList) {
-              generatedHtml += `<li style="margin-left:20px;margin-bottom:6px;">${pHtml}</li>`;
-              textBlocks.push({ type: "list", text: pText.trim() });
-            } else {
-              generatedHtml += `<p style="margin-bottom:12px;line-height:1.6;">${pHtml}</p>`;
-              textBlocks.push({ type: "paragraph", text: pText.trim() });
-            }
-          }
-        } else if (node.nodeName === "w:tbl") {
-          const tbl = node as Element;
-          let tblHtml = `<table style="width:100%;border-collapse:collapse;margin:16px 0;border:1px solid #cbd5e1;">`;
-          const rows = Array.from(tbl.getElementsByTagName("w:tr"));
-          for (let rIdx = 0; rIdx < rows.length; rIdx++) {
-            tblHtml += `<tr>`;
-            const cells = Array.from(rows[rIdx].getElementsByTagName("w:tc"));
-            for (const cell of cells) {
-              const cellText = cell.textContent || "";
-              const tag = rIdx === 0 ? "th" : "td";
-              tblHtml += `<${tag} style="border:1px solid #cbd5e1;padding:8px 12px;text-align:left;background:${rIdx === 0 ? "#f8fafc" : "#fff"};">${cellText}</${tag}>`;
-              if (cellText.trim()) {
-                textBlocks.push({ type: "paragraph", text: cellText.trim() });
-              }
-            }
-            tblHtml += `</tr>`;
-          }
-          tblHtml += `</table>`;
-          generatedHtml += tblHtml;
-        }
-      }
-
-      setHtmlContent(generatedHtml);
-
-      // Render PDF via pdf-lib
-      const pdfDoc = await PDFDocument.create();
-      const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-      const pageWidth = pageSize === "a4" ? 595.28 : 612;
-      const pageHeight = pageSize === "a4" ? 841.89 : 792;
-      const margin = 54;
-      const contentWidth = pageWidth - margin * 2;
-
-      let currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-      let currentY = pageHeight - margin;
-      let totalPages = 1;
-
-      // Document title header
-      currentPage.drawText(file.name.replace(/\.[^/.]+$/, ""), {
-        x: margin,
-        y: currentY,
-        size: 16,
-        font: helveticaBold,
-        color: rgb(0.09, 0.13, 0.2),
-      });
-      currentY -= 25;
-
-      // Divider line
-      currentPage.drawLine({
-        start: { x: margin, y: currentY },
-        end: { x: pageWidth - margin, y: currentY },
-        thickness: 1,
-        color: rgb(0.85, 0.47, 0.05),
-      });
-      currentY -= 20;
-
-      for (const block of textBlocks) {
-        const isHeading = block.type === "heading";
-        const font = isHeading ? helveticaBold : helvetica;
-        const currentFontSize = isHeading ? fontSize + 3 : fontSize;
-        const lineH = currentFontSize * lineSpacing;
-
-        const words = block.text.split(/\s+/);
-        let line = "";
-
-        for (const word of words) {
-          const testLine = line ? `${line} ${word}` : word;
-          let textWidth = 0;
-          try {
-            textWidth = font.widthOfTextAtSize(testLine, currentFontSize);
-          } catch {
-            textWidth = testLine.length * (currentFontSize * 0.5);
-          }
-
-          if (textWidth > contentWidth && line) {
-            if (currentY - lineH < margin) {
-              currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-              currentY = pageHeight - margin;
-              totalPages++;
-            }
-
-            try {
-              currentPage.drawText(line, {
-                x: block.type === "list" ? margin + 14 : margin,
-                y: currentY,
-                size: currentFontSize,
-                font,
-                color: isHeading ? rgb(0.06, 0.09, 0.16) : rgb(0.2, 0.25, 0.33),
-              });
-            } catch {
-              // Ignore rare character glyph encoding issues in fallback
-            }
-            currentY -= lineH;
-            line = word;
-          } else {
-            line = testLine;
-          }
-        }
-
-        if (line) {
-          if (currentY - lineH < margin) {
-            currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-            currentY = pageHeight - margin;
-            totalPages++;
-          }
-
-          try {
-            currentPage.drawText(line, {
-              x: block.type === "list" ? margin + 14 : margin,
-              y: currentY,
-              size: currentFontSize,
-              font,
-              color: isHeading ? rgb(0.06, 0.09, 0.16) : rgb(0.2, 0.25, 0.33),
-            });
-          } catch {
-            // Ignore rare character glyph encoding issues
-          }
-          currentY -= lineH + (isHeading ? 6 : 4);
-        }
-      }
-
-      setPageCount(totalPages);
-
-      const pdfBytes = await pdfDoc.save();
-      const pdfBlob = new Blob([pdfBytes as unknown as BlobPart], { type: "application/pdf" });
+      const pdfBlob: Blob = await window.html2pdf().set(opt).from(container).outputPdf("blob");
 
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
       const url = URL.createObjectURL(pdfBlob);
+
       setPdfBlobUrl(url);
       setPdfFileSize(pdfBlob.size);
+      setConversionStatus("Conversion complete!");
     } catch (err: unknown) {
       console.error("Word to PDF conversion failed:", err);
       setErrorMessage(
-        err instanceof Error ? err.message : "Word to PDF conversion failed. Please try again."
+        err instanceof Error ? err.message : "Failed to convert Word document to PDF. Please try again."
       );
     } finally {
       setIsProcessing(false);
@@ -329,46 +197,55 @@ export default function WordToPdfPage() {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>${file?.name || "Document"} - Print to PDF</title>
+          <title>${file?.name || "Document"} - PDF Export</title>
           <style>
             @page {
               size: ${pageSize.toUpperCase()};
-              margin: 20mm;
+              margin: 15mm;
             }
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-              font-size: ${fontSize}pt;
-              line-height: ${lineSpacing};
-              color: #1a1a1a;
+              font-size: 11pt;
+              line-height: 1.5;
+              color: #111;
               margin: 0;
               padding: 10px;
             }
             h1, h2, h3, h4, h5, h6 {
-              color: #111;
+              color: #0f172a;
               font-weight: 700;
               page-break-after: avoid;
+              margin-top: 18px;
+              margin-bottom: 8px;
             }
+            p { margin: 0 0 10px 0; }
             img {
               max-width: 100%;
               height: auto;
               page-break-inside: avoid;
               display: block;
-              margin: 10px auto;
+              margin: 12px auto;
             }
             table {
               width: 100%;
               border-collapse: collapse;
-              margin: 15px 0;
+              margin: 14px 0;
               page-break-inside: avoid;
             }
             th, td {
-              border: 1px solid #ccc;
+              border: 1px solid #cbd5e1;
               padding: 8px 12px;
               text-align: left;
             }
-            p {
-              margin: 0 0 10px 0;
+            th {
+              background-color: #f1f5f9;
+              font-weight: 600;
             }
+            ul, ol {
+              margin: 8px 0 12px 20px;
+              padding-left: 10px;
+            }
+            li { margin-bottom: 4px; }
           </style>
         </head>
         <body>
@@ -381,7 +258,7 @@ export default function WordToPdfPage() {
     setTimeout(() => {
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
-    }, 500);
+    }, 400);
   };
 
   return (
@@ -396,7 +273,7 @@ export default function WordToPdfPage() {
           ]}
         />
 
-        {/* Hidden iframe for native vector print preview */}
+        {/* Hidden print iframe */}
         <iframe
           ref={printFrameRef}
           title="Print Preview Frame"
@@ -422,7 +299,7 @@ export default function WordToPdfPage() {
             className="font-body text-base sm:text-lg mt-2 max-w-2xl"
             style={{ color: "var(--text-secondary)" }}
           >
-            Convert Microsoft Word (.docx) documents into clean, paginated PDF files directly in your browser with private client-side processing.
+            Convert Microsoft Word documents (.docx) into beautiful, paginated PDF files with full fidelity for text, formatting, tables, and images.
           </p>
         </div>
 
@@ -473,6 +350,7 @@ export default function WordToPdfPage() {
                   accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   onChange={(e) => {
                     if (e.target.files?.[0]) handleFile(e.target.files[0]);
+                    e.target.value = "";
                   }}
                   className="hidden"
                 />
@@ -483,10 +361,10 @@ export default function WordToPdfPage() {
                   <Upload size={28} />
                 </div>
                 <h3 className="font-headline font-semibold text-lg" style={{ color: "var(--text-primary)" }}>
-                  Choose a Word document or drag it here
+                  Choose a Word document (.docx)
                 </h3>
-                <p className="font-body text-sm mt-1 mb-4" style={{ color: "var(--text-muted)" }}>
-                  Supports Microsoft Word .docx files up to 50MB
+                <p className="font-body text-sm mt-1 mb-4" style={{ color: "var(--text-secondary)" }}>
+                  Converts locally in your browser with high fidelity formatting and images.
                 </p>
                 <button
                   type="button"
@@ -514,10 +392,10 @@ export default function WordToPdfPage() {
                       <FileType2 size={20} />
                     </div>
                     <div>
-                      <h4 className="font-headline font-semibold text-sm truncate max-w-xs sm:max-w-md" style={{ color: "var(--text-primary)" }}>
+                      <h4 className="font-headline font-semibold text-sm sm:text-base truncate max-w-xs sm:max-w-md" style={{ color: "var(--text-primary)" }}>
                         {file.name}
                       </h4>
-                      <p className="font-body text-xs" style={{ color: "var(--text-muted)" }}>
+                      <p className="font-body text-xs" style={{ color: "var(--text-secondary)" }}>
                         {formatFileSize(file.size)}
                       </p>
                     </div>
@@ -526,77 +404,66 @@ export default function WordToPdfPage() {
                     type="button"
                     onClick={() => {
                       setFile(null);
+                      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
                       setPdfBlobUrl(null);
                       setHtmlContent("");
                     }}
-                    className="font-body text-xs font-medium hover:underline"
-                    style={{ color: "var(--text-muted)" }}
+                    className="font-body text-xs font-medium text-red-500 hover:underline"
                   >
                     Change document
                   </button>
                 </div>
 
                 {/* Conversion Settings */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block font-body text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>
+                    <label className="block font-body text-xs font-semibold mb-1.5" style={{ color: "var(--text-secondary)" }}>
                       Target Page Size
                     </label>
                     <select
                       value={pageSize}
                       onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
-                      className="w-full rounded-lg border px-3 py-2 font-body text-sm"
+                      className="w-full rounded-xl border px-3 py-2.5 font-body text-sm"
                       style={{
                         backgroundColor: "var(--surface-tinted)",
                         borderColor: "var(--border-warm)",
                         color: "var(--text-primary)",
                       }}
                     >
-                      <option value="a4">A4 (210 × 297 mm)</option>
+                      <option value="a4">A4 (210 × 297 mm) — Standard</option>
                       <option value="letter">US Letter (8.5 × 11 in)</option>
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block font-body text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>
-                      Font Size
-                    </label>
-                    <select
-                      value={fontSize}
-                      onChange={(e) => setFontSize(Number(e.target.value))}
-                      className="w-full rounded-lg border px-3 py-2 font-body text-sm"
+                  <div className="flex items-end">
+                    <div
+                      className="w-full p-2.5 rounded-xl border flex items-center gap-2 text-xs font-body"
                       style={{
                         backgroundColor: "var(--surface-tinted)",
                         borderColor: "var(--border-warm)",
-                        color: "var(--text-primary)",
+                        color: "var(--text-secondary)",
                       }}
                     >
-                      <option value="10">10 pt (Compact)</option>
-                      <option value="11">11 pt (Standard)</option>
-                      <option value="12">12 pt (Large)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-body text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>
-                      Line Spacing
-                    </label>
-                    <select
-                      value={lineSpacing}
-                      onChange={(e) => setLineSpacing(Number(e.target.value))}
-                      className="w-full rounded-lg border px-3 py-2 font-body text-sm"
-                      style={{
-                        backgroundColor: "var(--surface-tinted)",
-                        borderColor: "var(--border-warm)",
-                        color: "var(--text-primary)",
-                      }}
-                    >
-                      <option value="1.2">1.2 (Tight)</option>
-                      <option value="1.35">1.35 (Normal)</option>
-                      <option value="1.6">1.6 (Relaxed)</option>
-                    </select>
+                      <Sparkles size={16} style={{ color: "var(--amber-primary)" }} />
+                      <span>Engine: Mammoth.js + html2pdf pipeline</span>
+                    </div>
                   </div>
                 </div>
+
+                {/* Status Indicator */}
+                {isProcessing && (
+                  <div
+                    className="p-4 rounded-xl border flex items-center gap-3"
+                    style={{
+                      backgroundColor: "var(--amber-tint)",
+                      borderColor: "rgba(200, 123, 58, 0.25)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    <Loader2 size={18} className="animate-spin shrink-0 text-amber-500" />
+                    <span className="font-body text-xs sm:text-sm font-medium">{conversionStatus}</span>
+                  </div>
+                )}
 
                 {/* Convert Button */}
                 {!pdfBlobUrl && (
@@ -604,13 +471,13 @@ export default function WordToPdfPage() {
                     type="button"
                     onClick={convertWordToPdf}
                     disabled={isProcessing}
-                    className="w-full py-3.5 rounded-xl font-body font-semibold text-sm text-white flex items-center justify-center gap-2 transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-60"
+                    className="w-full py-3.5 rounded-xl font-body font-semibold text-sm text-white flex items-center justify-center gap-2 transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-60 cursor-pointer"
                     style={{ backgroundColor: "var(--amber-primary)" }}
                   >
                     {isProcessing ? (
                       <>
                         <Loader2 size={18} className="animate-spin" />
-                        <span>Extracting & Generating PDF...</span>
+                        <span>Converting Document...</span>
                       </>
                     ) : (
                       <>
@@ -624,75 +491,132 @@ export default function WordToPdfPage() {
                 {/* Conversion Success & Actions */}
                 {pdfBlobUrl && (
                   <div
-                    className="p-5 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-4"
+                    className="p-5 rounded-2xl border flex flex-col gap-4"
                     style={{
-                      backgroundColor: "var(--surface-tinted)",
-                      borderColor: "var(--border-warm)",
+                      backgroundColor: "var(--surface)",
+                      borderColor: "rgba(34, 197, 94, 0.35)",
                     }}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-emerald-500 bg-emerald-500/10">
-                        <CheckCircle2 size={24} />
-                      </div>
-                      <div>
-                        <p className="font-headline font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
-                          Conversion Complete
-                        </p>
-                        <p className="font-body text-xs" style={{ color: "var(--text-muted)" }}>
-                          {pageCount} {pageCount === 1 ? "page" : "pages"} • {pdfFileSize ? formatFileSize(pdfFileSize) : ""}
-                        </p>
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-emerald-500 bg-emerald-500/10">
+                          <CheckCircle2 size={24} />
+                        </div>
+                        <div>
+                          <p className="font-headline font-bold text-base" style={{ color: "var(--text-primary)" }}>
+                            Word Document Converted Successfully!
+                          </p>
+                          <p className="font-body text-xs" style={{ color: "var(--text-secondary)" }}>
+                            PDF Output: {pdfFileSize ? formatFileSize(pdfFileSize) : ""}
+                          </p>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                    <div className="flex flex-wrap items-center gap-3 pt-1">
+                      <a
+                        href={pdfBlobUrl}
+                        download={`${file.name.replace(/\.[^/.]+$/, "")}.pdf`}
+                        className="flex-1 sm:flex-none px-6 py-3 rounded-xl font-body font-semibold text-sm text-white flex items-center justify-center gap-2 transition-transform hover:scale-105"
+                        style={{ backgroundColor: "var(--amber-primary)" }}
+                      >
+                        <Download size={16} />
+                        <span>Download PDF</span>
+                      </a>
+
                       <button
                         type="button"
                         onClick={handlePrintPreview}
-                        className="flex-1 sm:flex-none px-4 py-2.5 rounded-lg border font-body text-xs font-semibold flex items-center justify-center gap-2 transition-all hover:bg-black/5 dark:hover:bg-white/5"
+                        className="px-4 py-3 rounded-xl border font-body text-sm font-medium flex items-center justify-center gap-2 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                         style={{
                           borderColor: "var(--border-warm)",
                           color: "var(--text-primary)",
                         }}
-                        title="Open system print dialog with high-fidelity vector styling"
+                        title="Print or save as vector PDF"
                       >
-                        <Printer size={15} />
+                        <Printer size={16} />
                         <span>Print / Vector PDF</span>
                       </button>
 
-                      <a
-                        href={pdfBlobUrl}
-                        download={`${file.name.replace(/\.[^/.]+$/, "")}.pdf`}
-                        className="flex-1 sm:flex-none px-5 py-2.5 rounded-lg font-body font-semibold text-xs text-white flex items-center justify-center gap-2 transition-transform hover:scale-105"
-                        style={{ backgroundColor: "var(--amber-primary)" }}
+                      <button
+                        type="button"
+                        onClick={() => setShowPreview(!showPreview)}
+                        className="px-4 py-3 rounded-xl border font-body text-sm font-medium flex items-center justify-center gap-2 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                        style={{
+                          borderColor: "var(--border-warm)",
+                          color: "var(--text-secondary)",
+                        }}
                       >
-                        <Download size={15} />
-                        <span>Download PDF</span>
-                      </a>
+                        <Eye size={16} />
+                        <span>{showPreview ? "Hide Preview" : "Preview PDF"}</span>
+                      </button>
                     </div>
+
+                    {showPreview && (
+                      <div className="mt-3 border rounded-xl overflow-hidden" style={{ borderColor: "var(--border-warm)", height: "480px" }}>
+                        <iframe
+                          src={pdfBlobUrl}
+                          title="Converted PDF Preview"
+                          className="w-full h-full"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
-
-
-
               </div>
             )}
 
+            {/* Hidden / Off-screen render container used by html2pdf */}
+            <div
+              style={{
+                position: "absolute",
+                left: "-9999px",
+                top: 0,
+                width: pageSize === "a4" ? "210mm" : "8.5in",
+                background: "#ffffff",
+                color: "#111827",
+                padding: "16mm",
+                fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+                fontSize: "12pt",
+                lineHeight: "1.6",
+                boxSizing: "border-box",
+              }}
+              ref={renderContainerRef}
+            >
+              <style>{`
+                .word-render-box h1 { font-size: 22pt; font-weight: 700; color: #0f172a; margin: 20px 0 10px 0; }
+                .word-render-box h2 { font-size: 17pt; font-weight: 700; color: #1e293b; margin: 16px 0 8px 0; }
+                .word-render-box h3 { font-size: 14pt; font-weight: 600; color: #334155; margin: 14px 0 6px 0; }
+                .word-render-box p { margin: 0 0 12px 0; color: #1e293b; }
+                .word-render-box table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 10pt; }
+                .word-render-box th, .word-render-box td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
+                .word-render-box th { background-color: #f8fafc; font-weight: 600; }
+                .word-render-box img { max-width: 100%; height: auto; display: block; margin: 12px auto; }
+                .word-render-box ul, .word-render-box ol { margin: 8px 0 12px 24px; padding-left: 8px; }
+                .word-render-box li { margin-bottom: 4px; }
+              `}</style>
+              <div
+                className="word-render-box"
+                dangerouslySetInnerHTML={{ __html: htmlContent }}
+              />
+            </div>
+
             {/* Privacy Card */}
             <div
-              className="rounded-xl border p-4 flex items-center gap-3"
+              className="rounded-2xl border p-4 flex items-center gap-3"
               style={{
                 backgroundColor: "var(--surface)",
                 borderColor: "var(--border-warm)",
               }}
             >
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
                 style={{ backgroundColor: "var(--amber-tint)", color: "var(--amber-primary)" }}
               >
-                <Shield size={16} />
+                <Shield size={18} />
               </div>
               <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                <strong className="font-semibold text-primary">100% Client-Side Conversion:</strong> Your Word files are parsed directly inside your browser using Web Workers. No document data is ever sent to or stored on any server.
+                <strong className="font-semibold text-primary">100% Client-Side Privacy:</strong> Your Word files never touch any external server. Everything is decoded and rendered directly in your browser.
               </p>
             </div>
           </div>
@@ -700,7 +624,7 @@ export default function WordToPdfPage() {
           {/* Sidebar */}
           <div className="lg:col-span-4 flex flex-col gap-6">
             <div
-              className="rounded-xl border p-6"
+              className="rounded-2xl border p-6"
               style={{
                 backgroundColor: "var(--surface)",
                 borderColor: "var(--border-warm)",
@@ -712,64 +636,51 @@ export default function WordToPdfPage() {
               <ul className="space-y-2.5 text-xs font-body" style={{ color: "var(--text-secondary)" }}>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />
-                  <span>Full paragraph text, headings (H1–H6), and typography.</span>
+                  <span>Headings (H1 to H6) and paragraph styling.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />
-                  <span>Embedded photos, diagrams, and inline illustrations.</span>
+                  <span>Embedded photos, screenshots, and inline diagrams.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />
-                  <span>Bulleted lists, numbered lists, and bold/italic styles.</span>
+                  <span>Bulleted lists, numbered lists, bold, italics, and underlines.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />
-                  <span>Standard data tables and line breaks.</span>
+                  <span>Data tables with borders and styled header rows.</span>
                 </li>
               </ul>
-
-              <div
-                className="mt-4 p-3 rounded-lg border text-xs font-body"
-                style={{
-                  backgroundColor: "var(--surface-tinted)",
-                  borderColor: "var(--border-warm)",
-                  color: "var(--text-muted)",
-                }}
-              >
-                <strong className="text-primary block mb-1">Format Disclosure:</strong>
-                Complex proprietary shapes, macros, and SmartArt are rendered as clean standardized text and tables.
-              </div>
             </div>
 
             <div
-              className="rounded-xl border p-6"
+              className="rounded-2xl border p-6"
               style={{
                 backgroundColor: "var(--surface)",
                 borderColor: "var(--border-warm)",
               }}
             >
-              <h3 className="font-headline font-semibold text-base mb-3" style={{ color: "var(--text-primary)" }}>
+              <h3 className="font-headline font-semibold text-base mb-4" style={{ color: "var(--text-primary)" }}>
                 Related PDF Tools
               </h3>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-3 font-body text-sm">
                 {[
-                  { name: "PDF to PPT", href: "/tools/pdf/to-ppt", icon: FileType2 },
-                  { name: "Merge PDF", href: "/tools/pdf/merge", icon: FileText },
-                  { name: "Compress PDF", href: "/tools/pdf/compress", icon: Minimize2 },
-                  { name: "Image to PDF", href: "/tools/pdf/image-to-pdf", icon: ImageDown },
-                ].map((item, idx) => (
+                  { name: "Compress PDF", href: "/tools/pdf/compress", icon: FileType2 },
+                  { name: "Merge PDF", href: "/tools/pdf/merge", icon: FilePlus2 },
+                  { name: "Split PDF", href: "/tools/pdf/split", icon: Scissors },
+                  { name: "Rotate PDF", href: "/tools/pdf/rotate", icon: RotateCw },
+                ].map((t) => (
                   <Link
-                    key={idx}
-                    href={item.href}
-                    className="flex items-center justify-between p-2.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-xs font-body group"
+                    key={t.name}
+                    href={t.href}
+                    className="flex items-center justify-between p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+                    style={{ color: "var(--text-secondary)" }}
                   >
                     <div className="flex items-center gap-2.5">
-                      <item.icon size={15} style={{ color: "var(--amber-primary)" }} />
-                      <span className="font-medium" style={{ color: "var(--text-primary)" }}>
-                        {item.name}
-                      </span>
+                      <t.icon size={16} style={{ color: "var(--amber-primary)" }} />
+                      <span>{t.name}</span>
                     </div>
-                    <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" style={{ color: "var(--text-muted)" }} />
+                    <ChevronRight size={14} />
                   </Link>
                 ))}
               </div>

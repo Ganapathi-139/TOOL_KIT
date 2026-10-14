@@ -39,11 +39,17 @@ export function Header() {
         {/* Logo */}
         <Link
           href="/"
-          className="font-headline font-semibold text-xl tracking-tight"
+          className="flex items-center gap-2.5 font-headline font-semibold text-xl tracking-tight transition-opacity hover:opacity-90"
           style={{ color: "var(--amber-primary)" }}
           aria-label="ToolKit home"
         >
-          ToolKit
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/fevicon1.ico"
+            alt="ToolKit Logo"
+            className="w-8 h-8 rounded-lg object-contain"
+          />
+          <span>ToolKit</span>
         </Link>
 
         {/* Desktop nav */}

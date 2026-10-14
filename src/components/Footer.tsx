@@ -21,10 +21,16 @@ export function Footer() {
         {/* Brand */}
         <Link
           href="/"
-          className="font-headline font-semibold text-lg tracking-tight"
+          className="flex items-center gap-2.5 font-headline font-semibold text-lg tracking-tight transition-opacity hover:opacity-90"
           style={{ color: "var(--amber-primary)" }}
         >
-          ToolKit
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/fevicon1.ico"
+            alt="ToolKit Logo"
+            className="w-6 h-6 rounded-md object-contain"
+          />
+          <span>ToolKit</span>
         </Link>
 
         {/* Links */}

@@ -38,11 +38,12 @@ export const metadata: Metadata = {
   creator: "ToolKit",
   icons: {
     icon: [
+      { url: "/fevicon1.ico", sizes: "any" },
       { url: "/favicon.ico", sizes: "any" },
       { url: "/icon.png", type: "image/png", sizes: "512x512" },
     ],
     apple: [{ url: "/icon.png", sizes: "512x512", type: "image/png" }],
-    shortcut: "/favicon.ico",
+    shortcut: "/fevicon1.ico",
   },
   openGraph: {
     type: "website",

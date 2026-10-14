@@ -8,6 +8,7 @@ import {
   ArrowUpRight, Plus, Trash2, GripVertical, CalendarCheck,
   Sparkles, Sliders, FileCode, Layers, HardDrive, Gauge, Clock,
   Hash, Fingerprint, Link as LinkIcon, KeyRound, Percent, CaseUpper, Barcode, Volume2,
+  Presentation,
   type LucideProps,
 } from "lucide-react";
 import type { ElementType } from "react";
@@ -22,6 +23,7 @@ const iconMap: Record<string, ElementType<LucideProps>> = {
   ArrowUpRight, Plus, Trash2, GripVertical, CalendarCheck,
   Sparkles, Sliders, FileCode, Layers, HardDrive, Gauge, Clock,
   Hash, Fingerprint, Link: LinkIcon, KeyRound, Percent, CaseUpper, Barcode, Volume2,
+  Presentation,
 };
 
 interface IconProps extends LucideProps {
