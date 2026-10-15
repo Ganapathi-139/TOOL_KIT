@@ -51,10 +51,12 @@ export interface DocxPreviewOptions {
   ignoreWidth?: boolean;
   ignoreHeight?: boolean;
   breakPages?: boolean;
+  ignoreLastRenderedPageBreak?: boolean;
   useBase64URL?: boolean;
   renderHeaders?: boolean;
   renderFooters?: boolean;
   renderEndnotes?: boolean;
+  experimental?: boolean;
 }
 
 declare global {

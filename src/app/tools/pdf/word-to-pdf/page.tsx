@@ -35,6 +35,7 @@ export default function WordToPdfPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [pageCount, setPageCount] = useState(0);
+  const [docPageSize, setDocPageSize] = useState<{ isLandscape: boolean }>({ isLandscape: false });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -135,15 +136,26 @@ export default function WordToPdfPage() {
           ignoreWidth: false,
           ignoreHeight: false,
           breakPages: true,
+          ignoreLastRenderedPageBreak: false,
           useBase64URL: true,
           renderHeaders: true,
           renderFooters: true,
           renderEndnotes: true,
         });
 
-        const pages = tempDiv.querySelectorAll(".docx-wrapper > section, .docx-wrapper > article, .docx-page");
+        const pages = tempDiv.querySelectorAll<HTMLElement>(".docx-wrapper > section, .docx-wrapper > article, .docx-page");
         const count = pages.length || 1;
         setPageCount(count);
+
+        let isLandscape = false;
+        if (pages.length > 0) {
+          const first = pages[0];
+          const w = parseFloat(first.style.width || "0");
+          const h = parseFloat(first.style.minHeight || first.style.height || "0");
+          if (w > 0 && h > 0 && w > h) isLandscape = true;
+        }
+        setDocPageSize({ isLandscape });
+
         const html = tempDiv.innerHTML;
         document.body.removeChild(tempDiv);
         setRenderedHtml(html);
@@ -180,6 +192,11 @@ export default function WordToPdfPage() {
       return;
     }
 
+    const pageWidthMm = docPageSize.isLandscape ? "297mm" : "210mm";
+    const pageHeightMm = docPageSize.isLandscape ? "210mm" : "297mm";
+    const pageHeightSafe = docPageSize.isLandscape ? "209.6mm" : "296.6mm";
+    const pageOrientation = docPageSize.isLandscape ? "landscape" : "portrait";
+
     // ── Collect ALL CSS from the current page (includes docx-preview styles) ──
     // This is the critical fix: without docx-preview's CSS, section heights are
     // unknown, and our forced min-height bleeds content across page boundaries.
@@ -210,7 +227,7 @@ export default function WordToPdfPage() {
     /* ── Print overrides ── */
     *, *::before, *::after { box-sizing: border-box; }
 
-    @page { size: A4 portrait; margin: 0; }
+    @page { size: A4 ${pageOrientation}; margin: 0; }
 
     html, body {
       margin: 0 !important;
@@ -228,26 +245,36 @@ export default function WordToPdfPage() {
       flex-direction: column !important;
       align-items: center !important;
       gap: 0 !important;
+      margin: 0 !important;
     }
 
     /*
-     * Each Word page → one PDF page.
-     * Do NOT override width/height — let docx-preview's own dimensions drive
-     * the layout. Only remove decorations and force a page break.
+     * Each Word page → exactly one PDF page.
+     * Dimensions are locked to match A4 so browser font metrics cannot spill
+     * across page boundaries or produce trailing blank pages.
      */
     .docx-wrapper > section,
     .docx-wrapper > article,
     .docx-page {
       box-shadow: none !important;
       border: none !important;
-      margin: 0 !important;
+      margin: 0 auto !important;
+      width: ${pageWidthMm} !important;
+      max-width: ${pageWidthMm} !important;
+      height: ${pageHeightMm} !important;
+      max-height: ${pageHeightSafe} !important;
+      box-sizing: border-box !important;
+      page-break-before: auto !important;
       page-break-after: always !important;
       break-after: page !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
       overflow: hidden !important;
       background: #fff !important;
+      position: relative !important;
     }
 
-    /* Last page: no blank trailing page */
+    /* Last page: strictly avoid blank trailing page */
     .docx-wrapper > section:last-child,
     .docx-wrapper > article:last-child,
     .docx-page:last-child {
@@ -258,8 +285,8 @@ export default function WordToPdfPage() {
     /* Mammoth fallback wrapper */
     .docx-fallback-wrapper {
       padding: 25.4mm;
-      width: 210mm;
-      min-height: 297mm;
+      width: ${pageWidthMm};
+      min-height: ${pageHeightMm};
       margin: 0 auto;
       background: #fff;
     }
@@ -284,6 +311,7 @@ export default function WordToPdfPage() {
     setHasRenderedDoc(false);
     setRenderedHtml("");
     setPageCount(0);
+    setDocPageSize({ isLandscape: false });
     setConversionStatus("");
     setErrorMessage(null);
   };
@@ -489,16 +517,15 @@ export default function WordToPdfPage() {
 
                     <style>{`
                       .word-preview-host {
-                        background: #f1f5f9;
+                        background: #f8fafc;
                         border-radius: 12px;
                         border: 1px solid var(--border-warm);
-                        padding: 20px 12px;
+                        padding: 32px 16px;
                         overflow: auto;
-                        max-height: 680px;
+                        max-height: 700px;
                         display: flex;
                         flex-direction: column;
                         align-items: center;
-                        gap: 0;
                       }
                       .word-preview-host .docx-wrapper {
                         background: transparent !important;
@@ -506,20 +533,35 @@ export default function WordToPdfPage() {
                         display: flex !important;
                         flex-direction: column !important;
                         align-items: center !important;
-                        gap: 20px !important;
+                        gap: 36px !important;
                         width: 100% !important;
+                        counter-reset: word-page-num;
                       }
                       .word-preview-host .docx-wrapper > section,
                       .word-preview-host .docx-wrapper > article,
                       .word-preview-host .docx-page {
                         background: #ffffff !important;
-                        box-shadow: 0 2px 12px rgba(0,0,0,0.10) !important;
-                        border: 1px solid #e2e8f0 !important;
+                        box-shadow: 0 4px 16px rgba(0,0,0,0.10) !important;
+                        border: 1px solid #cbd5e1 !important;
                         border-radius: 4px !important;
                         max-width: 100% !important;
-                        width: 100% !important;
                         box-sizing: border-box !important;
                         overflow: hidden !important;
+                        position: relative !important;
+                        counter-increment: word-page-num;
+                      }
+                      .word-preview-host .docx-wrapper > section::before,
+                      .word-preview-host .docx-wrapper > article::before {
+                        content: "Page " counter(word-page-num);
+                        position: absolute;
+                        top: -24px;
+                        left: 0;
+                        font-family: inherit;
+                        font-size: 11px;
+                        font-weight: 700;
+                        color: #64748b;
+                        letter-spacing: 0.05em;
+                        text-transform: uppercase;
                       }
                       .word-preview-host table { border-collapse: collapse; width: 100%; }
                       .word-preview-host td, .word-preview-host th { border: 1px solid #cbd5e1; padding: 4px 8px; }

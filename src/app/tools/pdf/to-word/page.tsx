@@ -83,13 +83,23 @@ export default function PdfToWordPage() {
         bold: boolean;
         italic: boolean;
       };
-      type PageData = { pageNum: number; lines: TextRun[][] };
+      type PageData = {
+        pageNum: number;
+        lines: TextRun[][];
+        widthDxa: number;
+        heightDxa: number;
+        isLandscape: boolean;
+      };
 
       const pages: PageData[] = [];
 
       for (let i = 1; i <= numPages; i++) {
         setStatus(`Extracting page ${i} of ${numPages}...`);
         const page = await pdfDoc.getPage(i);
+        const viewport = page.getViewport({ scale: 1 });
+        const widthDxa = Math.round(viewport.width * 20);
+        const heightDxa = Math.round(viewport.height * 20);
+        const isLandscape = viewport.width > viewport.height;
         const textContent = await page.getTextContent({ includeMarkedContent: false });
 
         // styles map: fontName → { fontFamily, ascent, descent, vertical }
@@ -97,7 +107,18 @@ export default function PdfToWordPage() {
         const styles: Record<string, any> = textContent.styles || {};
 
         // Group runs into lines by Y position (rounded to nearest integer)
-        const yGroups: Record<number, TextRun[]> = {};
+        type LineItem = {
+          str: string;
+          fontSize: number;
+          fontFamily: string;
+          bold: boolean;
+          italic: boolean;
+          x: number;
+          y: number;
+          width: number;
+        };
+
+        const rawRuns: LineItem[] = [];
 
         for (const rawItem of textContent.items as Array<{
           str: string;
@@ -106,7 +127,7 @@ export default function PdfToWordPage() {
           width: number;
           height: number;
         }>) {
-          if (!rawItem.str) continue;
+          if (!rawItem.str || !rawItem.str.trim()) continue;
 
           // Font size from transform matrix scale factor
           const scaleX = rawItem.transform[0];
@@ -128,18 +149,62 @@ export default function PdfToWordPage() {
             .replace(/[-_ ](bold|italic|oblique|regular|medium|light|heavy|black|condensed|expanded|semibold|extrabold)/gi, "")
             .trim() || "Calibri";
 
-          const y = Math.round(rawItem.transform[5]);
-          if (!yGroups[y]) yGroups[y] = [];
-          yGroups[y].push({ str: rawItem.str, fontSize, fontFamily, bold, italic });
+          rawRuns.push({
+            str: rawItem.str,
+            fontSize,
+            fontFamily,
+            bold,
+            italic,
+            x: rawItem.transform[4],
+            y: rawItem.transform[5],
+            width: rawItem.width || 0,
+          });
         }
 
-        // Sort Y positions descending (top of page first in PDF coords)
-        const sortedYs = Object.keys(yGroups)
-          .map(Number)
-          .sort((a, b) => b - a);
+        // Group runs into lines using Y-tolerance clustering (threshold: 3.5pt)
+        // Prevents fractional baseline differences from creating separate paragraphs
+        type LineCluster = { baselineY: number; runs: LineItem[] };
+        const lineClusters: LineCluster[] = [];
 
-        const lines: TextRun[][] = sortedYs.map((y) => yGroups[y]);
-        pages.push({ pageNum: i, lines });
+        for (const run of rawRuns) {
+          const matched = lineClusters.find((lc) => Math.abs(lc.baselineY - run.y) <= 3.5);
+          if (matched) {
+            matched.runs.push(run);
+          } else {
+            lineClusters.push({ baselineY: run.y, runs: [run] });
+          }
+        }
+
+        // Sort lines top-to-bottom (descending Y in PDF coordinates)
+        lineClusters.sort((a, b) => b.baselineY - a.baselineY);
+
+        // Within each line, sort runs left-to-right (ascending X)
+        const pageLines: TextRun[][] = [];
+        for (const cluster of lineClusters) {
+          cluster.runs.sort((a, b) => a.x - b.x);
+
+          const formattedRuns: TextRun[] = [];
+          for (let rIdx = 0; rIdx < cluster.runs.length; rIdx++) {
+            const current = cluster.runs[rIdx];
+            if (rIdx > 0) {
+              const prev = cluster.runs[rIdx - 1];
+              const gap = current.x - (prev.x + prev.width);
+              if (gap > 2 && !prev.str.endsWith(" ") && !current.str.startsWith(" ")) {
+                current.str = " " + current.str;
+              }
+            }
+            formattedRuns.push({
+              str: current.str,
+              fontSize: current.fontSize,
+              fontFamily: current.fontFamily,
+              bold: current.bold,
+              italic: current.italic,
+            });
+          }
+          pageLines.push(formattedRuns);
+        }
+
+        pages.push({ pageNum: i, lines: pageLines, widthDxa, heightDxa, isLandscape });
       }
 
       setStatus("Building Word document (.docx)...");
@@ -182,6 +247,7 @@ export default function PdfToWordPage() {
   // ────────────────────────────────────────────────────────────
   // Build a .docx (Open XML ZIP) file preserving font size,
   // font family, bold and italic for every extracted text run.
+  // Enforces exact page boundaries using Word Section Breaks (nextPage).
   // ────────────────────────────────────────────────────────────
   type TextRun = { str: string; fontSize: number; fontFamily: string; bold: boolean; italic: boolean; };
 
@@ -189,13 +255,29 @@ export default function PdfToWordPage() {
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
   const buildDocx = async (
-    pages: { pageNum: number; lines: TextRun[][] }[]
+    pages: { pageNum: number; lines: TextRun[][]; widthDxa: number; heightDxa: number; isLandscape: boolean }[]
   ): Promise<Blob> => {
 
     const xmlParagraphs: string[] = [];
 
-    pages.forEach(({ lines }, pageIndex) => {
-      lines.forEach((runs) => {
+    pages.forEach((pageData, pageIndex) => {
+      const { lines, widthDxa, heightDxa, isLandscape } = pageData;
+      const isLastPage = pageIndex === pages.length - 1;
+      const orientAttr = isLandscape ? ' w:orient="landscape"' : "";
+
+      // Handle blank page
+      if (lines.length === 0) {
+        if (!isLastPage) {
+          xmlParagraphs.push(
+            `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:sectPr><w:type w:val="nextPage"/><w:pgSz w:w="${widthDxa}" w:h="${heightDxa}"${orientAttr}/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr></w:pPr></w:p>`
+          );
+        }
+        return;
+      }
+
+      lines.forEach((runs, lineIndex) => {
+        const isLastLineOfPage = lineIndex === lines.length - 1;
+
         // Each line → one paragraph; each run → one <w:r> with formatting
         const wruns = runs.map((run) => {
           const szHalfPt = Math.max(8, Math.min(run.fontSize * 2, 144)); // clamp 4–72pt
@@ -215,14 +297,22 @@ export default function PdfToWordPage() {
           ].join("");
         }).join("");
 
-        xmlParagraphs.push(`<w:p>${wruns}</w:p>`);
-      });
+        let ppr = `<w:spacing w:before="0" w:after="40" w:line="240" w:lineRule="auto"/>`;
 
-      // Page break between pages (not after last)
-      if (pageIndex < pages.length - 1) {
-        xmlParagraphs.push(`<w:p><w:r><w:br w:type="page"/></w:r></w:p>`);
-      }
+        // If this is the last line of a page, insert a Hard Section Break (Next Page)
+        // This physically guarantees Word will start the next page on an isolated new page
+        if (!isLastPage && isLastLineOfPage) {
+          ppr += `<w:sectPr><w:type w:val="nextPage"/><w:pgSz w:w="${widthDxa}" w:h="${heightDxa}"${orientAttr}/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>`;
+        }
+
+        xmlParagraphs.push(`<w:p><w:pPr>${ppr}</w:pPr>${wruns}</w:p>`);
+      });
     });
+
+    const lastPage = pages[pages.length - 1];
+    const lastWidthDxa = lastPage?.widthDxa || 11906;
+    const lastHeightDxa = lastPage?.heightDxa || 16838;
+    const lastOrientAttr = lastPage?.isLandscape ? ' w:orient="landscape"' : "";
 
     const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document
@@ -231,8 +321,8 @@ export default function PdfToWordPage() {
   <w:body>
     ${xmlParagraphs.join("\n    ")}
     <w:sectPr>
-      <w:pgSz w:w="12240" w:h="15840"/>
-      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+      <w:pgSz w:w="${lastWidthDxa}" w:h="${lastHeightDxa}"${lastOrientAttr}/>
+      <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="720" w:footer="720" w:gutter="0"/>
     </w:sectPr>
   </w:body>
 </w:document>`;
