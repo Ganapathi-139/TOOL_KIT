@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   Upload,
@@ -41,6 +41,52 @@ type PageData = {
   isLandscape: boolean;
 };
 
+// ── Module-level Script Loaders & Initializers ──
+function loadScript(src: string, fallback: string): Promise<void> {
+  return new Promise((resolve) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((window as any).pdfjsLib) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => {
+      const f = document.createElement("script");
+      f.src = fallback;
+      f.onload = () => resolve();
+      f.onerror = () => resolve();
+      document.body.appendChild(f);
+    };
+    document.body.appendChild(s);
+  });
+}
+
+function loadJsZip(): Promise<void> {
+  return new Promise((resolve) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((window as any).JSZip) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = "/js/jszip.min.js";
+    s.onload = () => resolve();
+    s.onerror = () => {
+      const f = document.createElement("script");
+      f.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+      f.onload = () => resolve();
+      f.onerror = () => resolve();
+      document.body.appendChild(f);
+    };
+    document.body.appendChild(s);
+  });
+}
+
+function initPdfWorker(): void {
+  if (typeof window === "undefined") return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pdfjsLib = (window as any).pdfjsLib;
+  if (pdfjsLib?.GlobalWorkerOptions) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "/js/pdf.worker.min.js";
+  }
+}
+
 export default function PdfToWordPage() {
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -54,6 +100,17 @@ export default function PdfToWordPage() {
   const [isImageBasedPdf, setIsImageBasedPdf] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    loadScript(
+      "/js/pdf.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+    )
+      .then(() => {
+        initPdfWorker();
+      })
+      .catch(() => {});
+  }, []);
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + " B";
@@ -110,7 +167,7 @@ export default function PdfToWordPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pdfjsLib = (window as any).pdfjsLib;
       if (!pdfjsLib) throw new Error("PDF engine failed to load. Please refresh and try again.");
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "/js/pdf.worker.min.js";
+      initPdfWorker();
 
       setStatus("Reading PDF…");
       const arrayBuffer = await file.arrayBuffer();
@@ -529,41 +586,6 @@ export default function PdfToWordPage() {
       mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
   };
-
-  // ── Script loaders ──
-  const loadScript = (src: string, fallback: string): Promise<void> =>
-    new Promise((resolve) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((window as any).pdfjsLib) { resolve(); return; }
-      const s = document.createElement("script");
-      s.src = src;
-      s.onload = () => resolve();
-      s.onerror = () => {
-        const f = document.createElement("script");
-        f.src = fallback;
-        f.onload = () => resolve();
-        f.onerror = () => resolve();
-        document.body.appendChild(f);
-      };
-      document.body.appendChild(s);
-    });
-
-  const loadJsZip = (): Promise<void> =>
-    new Promise((resolve) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((window as any).JSZip) { resolve(); return; }
-      const s = document.createElement("script");
-      s.src = "/js/jszip.min.js";
-      s.onload = () => resolve();
-      s.onerror = () => {
-        const f = document.createElement("script");
-        f.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
-        f.onload = () => resolve();
-        f.onerror = () => resolve();
-        document.body.appendChild(f);
-      };
-      document.body.appendChild(s);
-    });
 
   const resetTool = () => {
     setFile(null);

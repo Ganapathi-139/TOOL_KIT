@@ -11,7 +11,6 @@ import {
   FileText,
   Loader2,
   CheckCircle2,
-  Info,
   FilePlus2,
   Scissors,
   RotateCw,

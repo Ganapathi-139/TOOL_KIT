@@ -36,7 +36,7 @@ export default function ImageResizePage() {
   const [outputFormat, setOutputFormat] = useState<"image/png" | "image/jpeg" | "image/webp">("image/png");
   const [quality, setQuality] = useState<number>(0.92);
 
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [_previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [resizedBlobUrl, setResizedBlobUrl] = useState<string | null>(null);
   const [resizedSize, setResizedSize] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);

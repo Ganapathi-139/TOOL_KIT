@@ -30,7 +30,7 @@ async function runPythonConverter(
 ): Promise<{ success: boolean; error?: string }> {
   return new Promise((resolve) => {
     const python = findPython();
-    const proc = spawn(python, [PYTHON_SCRIPT, inputPath, outputPath], {
+    const proc = spawn(/*turbopackIgnore: true*/ python, [PYTHON_SCRIPT, inputPath, outputPath], {
       timeout: 60_000, // 60 second max
     });
 
@@ -62,7 +62,7 @@ async function runPythonConverter(
 
 export async function POST(req: NextRequest) {
   // Check if the python script exists — fast fail on Vercel
-  if (!existsSync(PYTHON_SCRIPT)) {
+  if (!existsSync(/*turbopackIgnore: true*/ PYTHON_SCRIPT)) {
     return NextResponse.json(
       { error: "Python backend not available on this deployment." },
       { status: 503 }
@@ -85,13 +85,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "File too large (max 50 MB)." }, { status: 413 });
     }
 
+    const arrayBuffer = await file.arrayBuffer();
+
+    // Verify PDF magic bytes (%PDF) to prevent arbitrary file processing
+    const headerBytes = Buffer.from(arrayBuffer.slice(0, 5)).toString("ascii");
+    if (!headerBytes.startsWith("%PDF")) {
+      return NextResponse.json({ error: "Uploaded file is not a valid PDF document." }, { status: 400 });
+    }
+
     await ensureTmpDir();
     const id = crypto.randomBytes(8).toString("hex");
     inputPath = path.join(TMP_DIR, `${id}.pdf`);
     outputPath = path.join(TMP_DIR, `${id}.docx`);
 
     // Write uploaded PDF to temp file
-    const arrayBuffer = await file.arrayBuffer();
     await writeFile(inputPath, Buffer.from(arrayBuffer));
 
     // Run pdf2docx via Python subprocess
@@ -99,21 +106,21 @@ export async function POST(req: NextRequest) {
 
     if (!result.success) {
       return NextResponse.json(
-        { error: result.error || "Conversion failed." },
+        { error: "Document conversion failed. Ensure the PDF contains standard formatting." },
         { status: 500 }
       );
     }
 
     // Read the output DOCX
     const docxBuffer = await readFile(outputPath);
-    const originalName = file.name.replace(/\.pdf$/i, "");
+    const safeOriginalName = file.name.replace(/\.pdf$/i, "").replace(/[^\w.-]/g, "_").slice(0, 100) || "converted_document";
 
     return new NextResponse(docxBuffer, {
       status: 200,
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(originalName)}.docx"`,
+        "Content-Disposition": `attachment; filename="${safeOriginalName}.docx"; filename*=UTF-8''${encodeURIComponent(safeOriginalName)}.docx`,
         "Content-Length": docxBuffer.length.toString(),
         "X-Conversion-Engine": "pdf2docx",
       },
@@ -121,16 +128,13 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     console.error("[pdf-to-word API]", err);
     return NextResponse.json(
-      {
-        error:
-          err instanceof Error ? err.message : "Internal server error during conversion.",
-      },
+      { error: "Internal server error during conversion." },
       { status: 500 }
     );
   } finally {
     // Clean up temp files
     for (const f of [inputPath, outputPath]) {
-      if (f && existsSync(f)) {
+      if (f && existsSync(/*turbopackIgnore: true*/ f)) {
         await unlink(f).catch(() => {});
       }
     }

@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   Calculator,
   Shield,
-  Delete,
   History,
   Check,
   ChevronRight,

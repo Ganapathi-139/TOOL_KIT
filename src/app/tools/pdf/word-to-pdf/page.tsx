@@ -26,6 +26,16 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 
 
 
+function sanitizeHtmlContent(raw: string): string {
+  return raw
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
+    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, "")
+    .replace(/<embed\b[^>]*>/gi, "")
+    .replace(/\s*on\w+\s*=\s*(['"]).*?\1/gi, "")
+    .replace(/href\s*=\s*(['"])javascript:.*?\1/gi, 'href="#"');
+}
+
 export default function WordToPdfPage() {
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -158,7 +168,7 @@ export default function WordToPdfPage() {
 
         const html = tempDiv.innerHTML;
         document.body.removeChild(tempDiv);
-        setRenderedHtml(html);
+        setRenderedHtml(sanitizeHtmlContent(html));
         setHasRenderedDoc(true);
         setConversionStatus(`Document ready: ${count} ${count === 1 ? "page" : "pages"}. Click "Download PDF" below.`);
       } else {
@@ -168,7 +178,7 @@ export default function WordToPdfPage() {
         setConversionStatus("Converting document content...");
         const result = await window.mammoth!.convertToHtml({ arrayBuffer: buffer });
         const html = `<div class="docx-fallback-wrapper">${result.value}</div>`;
-        setRenderedHtml(html);
+        setRenderedHtml(sanitizeHtmlContent(html));
         setPageCount(1);
         setHasRenderedDoc(true);
         setConversionStatus(`Document ready. Click "Download PDF" below.`);

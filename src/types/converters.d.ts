@@ -40,9 +40,9 @@ export interface Html2PdfInstance {
   set: (options: Html2PdfOptions) => Html2PdfInstance;
   from: (element: HTMLElement | string) => Html2PdfInstance;
   toPdf: () => Html2PdfInstance;
-  get: (type: string) => Promise<any>;
+  get: (type: string) => Promise<unknown>;
   save: (filename?: string) => Promise<void>;
-  outputPdf: (type: "blob" | "dataurlstring" | "arraybuffer") => Promise<any>;
+  outputPdf: (type: "blob" | "dataurlstring" | "arraybuffer") => Promise<unknown>;
 }
 
 export interface DocxPreviewOptions {
@@ -65,15 +65,15 @@ declare global {
       convertToHtml: (options: MammothOptions) => Promise<MammothResult>;
     };
     html2pdf?: (element?: HTMLElement, options?: Html2PdfOptions) => Html2PdfInstance;
-    html2canvas?: (element: HTMLElement, options?: any) => Promise<HTMLCanvasElement>;
-    JSZip?: any;
+    html2canvas?: (element: HTMLElement, options?: unknown) => Promise<HTMLCanvasElement>;
+    JSZip?: unknown;
     docx?: {
       renderAsync: (
         data: Blob | ArrayBuffer | Uint8Array,
         bodyContainer: HTMLElement,
         styleContainer?: HTMLElement | null,
         options?: DocxPreviewOptions
-      ) => Promise<any>;
+      ) => Promise<unknown>;
     };
   }
 }

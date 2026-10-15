@@ -1,6 +1,9 @@
 import crypto from "crypto";
 
-const SECRET = process.env.FILE_SHARE_SECRET || "toolkit_file_share_secure_secret_2026_salt";
+// Use environment variable if configured, otherwise use a secure per-process random key
+// This prevents anyone reading the public repository from forging tokens.
+const RUNTIME_SECRET = crypto.randomBytes(32).toString("hex");
+const SECRET = process.env.FILE_SHARE_SECRET || RUNTIME_SECRET;
 
 export interface ShareTokenPayload {
   url: string;
@@ -27,11 +30,25 @@ export function verifyShareToken(token: string): ShareTokenPayload | null {
     if (parts.length !== 2) return null;
     const [data, signature] = parts;
     const expectedSignature = crypto.createHmac("sha256", SECRET).update(data).digest("base64url");
-    if (signature !== expectedSignature) return null;
+
+    // Constant-time comparison to prevent timing attacks
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expectedSignature);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return null;
+    }
 
     const jsonStr = Buffer.from(data, "base64url").toString("utf8");
-    return JSON.parse(jsonStr) as ShareTokenPayload;
+    const payload = JSON.parse(jsonStr) as ShareTokenPayload;
+
+    // Check expiration: tokens valid for 7 days
+    if (!payload.time || Date.now() - payload.time > 7 * 24 * 60 * 60 * 1000) {
+      return null;
+    }
+
+    return payload;
   } catch {
     return null;
   }
 }
+

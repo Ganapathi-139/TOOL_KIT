@@ -15,18 +15,38 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
       }
 
+      // Strict URL and domain validation to prevent open redirects and SSRF
+      try {
+        const parsedUrl = new URL(externalUrl);
+        if (parsedUrl.protocol !== "https:") {
+          return NextResponse.json({ error: "Only secure HTTPS URLs are permitted." }, { status: 400 });
+        }
+        const hostname = parsedUrl.hostname.toLowerCase();
+        const isAllowedDomain = hostname === "gofile.io" || hostname.endsWith(".gofile.io");
+        if (!isAllowedDomain) {
+          return NextResponse.json(
+            { error: "Untrusted external storage provider domain." },
+            { status: 400 }
+          );
+        }
+      } catch {
+        return NextResponse.json({ error: "Invalid URL provided." }, { status: 400 });
+      }
+
+      const safeName = String(name).slice(0, 255).replace(/[\r\n\0]/g, "");
+
       const token = createShareToken({
         url: externalUrl,
-        name,
-        size: Number(size) || 0,
-        type: type || "application/octet-stream",
+        name: safeName,
+        size: Math.max(0, Number(size) || 0),
+        type: String(type || "application/octet-stream").slice(0, 100),
         isExternal: true,
       });
 
       return NextResponse.json({
         success: true,
         token,
-        fileName: name,
+        fileName: safeName,
         size: Number(size) || 0,
         type: type || "application/octet-stream",
       });
@@ -40,9 +60,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file was provided." }, { status: 400 });
     }
 
+    // Limit maximum upload size (100 MB max)
+    const MAX_UPLOAD_SIZE = 100 * 1024 * 1024;
+    if (file.size > MAX_UPLOAD_SIZE) {
+      return NextResponse.json({ error: "File exceeds 100 MB limit." }, { status: 413 });
+    }
+
     // Forward to secure Cloudflare R2 storage
     const upstreamFormData = new FormData();
-    upstreamFormData.append("file", file, file.name);
+    const safeFileName = file.name.slice(0, 255).replace(/[\r\n\0]/g, "");
+    upstreamFormData.append("file", file, safeFileName);
 
     const upstreamRes = await fetch("https://tmpfile.link/api/upload", {
       method: "POST",
@@ -50,8 +77,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (!upstreamRes.ok) {
-      const errText = await upstreamRes.text().catch(() => "");
-      throw new Error(`Storage provider responded with status ${upstreamRes.status}: ${errText.slice(0, 100)}`);
+      throw new Error(`Storage provider returned status ${upstreamRes.status}`);
     }
 
     const data = await upstreamRes.json();
@@ -64,7 +90,7 @@ export async function POST(req: NextRequest) {
     // Create secure in-app share token
     const token = createShareToken({
       url: downloadUrl,
-      name: file.name,
+      name: safeFileName,
       size: file.size,
       type: file.type || "application/octet-stream",
       isExternal: false,
@@ -73,13 +99,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       token,
-      fileName: file.name,
+      fileName: safeFileName,
       size: file.size,
       type: file.type || "application/octet-stream",
     });
   } catch (err: unknown) {
     console.error("API file-share upload error:", err);
-    const message = err instanceof Error ? err.message : "Failed to upload file.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Failed to upload file. Please try again." }, { status: 500 });
   }
 }

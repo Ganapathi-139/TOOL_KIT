@@ -43,6 +43,7 @@ next-env.d.ts
 # ide & editors
 .vscode/
 .idea/
+.agents/
 *.swp
 *.swo
 

@@ -20,9 +20,52 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Validate URL to protect against SSRF and open redirect
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(payload.url);
+    } catch {
+      return NextResponse.json({ error: "Malformed storage URL." }, { status: 400 });
+    }
+
+    if (parsedUrl.protocol !== "https:") {
+      return NextResponse.json({ error: "Insecure storage URL." }, { status: 400 });
+    }
+
+    const hostname = parsedUrl.hostname.toLowerCase();
+
+    // Block private/local IP addresses and metadata endpoints
+    const isPrivateHost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "169.254.169.254" ||
+      hostname.startsWith("10.") ||
+      hostname.startsWith("192.168.") ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".internal");
+
+    if (isPrivateHost) {
+      return NextResponse.json({ error: "Access to private resources is forbidden." }, { status: 403 });
+    }
+
     // If external storage link (e.g., Gofile), redirect to the page
     if (payload.isExternal) {
+      const isAllowedExternal = hostname === "gofile.io" || hostname.endsWith(".gofile.io");
+      if (!isAllowedExternal) {
+        return NextResponse.json({ error: "Unauthorized redirect destination." }, { status: 403 });
+      }
       return NextResponse.redirect(payload.url, 302);
+    }
+
+    // Verify upstream storage backend domain before proxying
+    const isAllowedStorage =
+      hostname === "tmpfile.link" ||
+      hostname.endsWith(".tmpfile.link") ||
+      hostname.endsWith(".r2.cloudflarestorage.com");
+
+    if (!isAllowedStorage) {
+      return NextResponse.json({ error: "Untrusted storage host." }, { status: 403 });
     }
 
     // Stream directly from storage backend through our own domain
@@ -54,7 +97,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: unknown) {
     console.error("Download route error:", err);
-    const message = err instanceof Error ? err.message : "Internal download error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Download failed. Please try again." }, { status: 500 });
   }
 }
