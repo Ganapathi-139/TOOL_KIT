@@ -1,9 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createShareToken } from "@/lib/file-share";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const contentType = req.headers.get("content-type") || "";
+
+    // Support JSON payload for wrapping external/fallback URLs (e.g. large files > 4.5MB)
+    if (contentType.includes("application/json")) {
+      const body = await req.json();
+      const { externalUrl, name, size, type } = body;
+      if (!externalUrl || !name) {
+        return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      }
+
+      const token = createShareToken({
+        url: externalUrl,
+        name,
+        size: Number(size) || 0,
+        type: type || "application/octet-stream",
+        isExternal: true,
+      });
+
+      return NextResponse.json({
+        success: true,
+        token,
+        fileName: name,
+        size: Number(size) || 0,
+        type: type || "application/octet-stream",
+      });
+    }
+
+    // Default: Multipart file upload
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
 
@@ -11,7 +40,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file was provided." }, { status: 400 });
     }
 
-    // Forward to clean temporary storage provider (Cloudflare R2 direct attachment download)
+    // Forward to secure Cloudflare R2 storage
     const upstreamFormData = new FormData();
     upstreamFormData.append("file", file, file.name);
 
@@ -32,11 +61,21 @@ export async function POST(req: NextRequest) {
       throw new Error("Storage provider did not return a valid download URL.");
     }
 
+    // Create secure in-app share token
+    const token = createShareToken({
+      url: downloadUrl,
+      name: file.name,
+      size: file.size,
+      type: file.type || "application/octet-stream",
+      isExternal: false,
+    });
+
     return NextResponse.json({
       success: true,
-      downloadUrl,
+      token,
       fileName: file.name,
       size: file.size,
+      type: file.type || "application/octet-stream",
     });
   } catch (err: unknown) {
     console.error("API file-share upload error:", err);
