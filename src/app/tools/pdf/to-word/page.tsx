@@ -51,6 +51,51 @@ export default function PdfToWordPage() {
     setErrorMessage(null);
   };
 
+  // ── Extract font aliases (F1, F2…) → real BaseFont names from PDF binary ──
+  // PDF.js returns generic fontNames like "g_d0_f2" but the PDF binary has
+  // exact mappings: /F2 22 0 R → obj 22 has /BaseFont /Times#20New#20Roman,Bold
+  const extractPdfFontMap = (buf: ArrayBuffer): Record<string, { family: string; bold: boolean; italic: boolean }> => {
+    const bytes = new Uint8Array(buf);
+    const str = new Array(bytes.length).fill(0).map((_, i) => String.fromCharCode(bytes[i])).join("");
+    const objMap: Record<string, string> = {};
+    const objRegex = /(\d+)\s+0\s+obj\s*<<([\s\S]*?)>>\s*endobj/g;
+    let m: RegExpExecArray | null;
+    while ((m = objRegex.exec(str)) !== null) objMap[m[1]] = m[2];
+
+    const fontObjToBaseFont: Record<string, string> = {};
+    for (const [objNum, body] of Object.entries(objMap)) {
+      const bfMatch = body.match(/\/(?:BaseFont|FontName)\s*\/([^\s\/>]+)/);
+      if (bfMatch) {
+        let rawName = bfMatch[1].replace(/#20/g, " ");
+        if (rawName.includes("+")) rawName = rawName.split("+")[1];
+        fontObjToBaseFont[objNum] = rawName;
+      }
+    }
+
+    const result: Record<string, { family: string; bold: boolean; italic: boolean }> = {};
+    const resRegex = /\/([A-Za-z0-9_]+)\s+(\d+)\s+0\s+R/g;
+    while ((m = resRegex.exec(str)) !== null) {
+      const alias = m[1]; const targetObj = m[2];
+      if (fontObjToBaseFont[targetObj]) {
+        const fullName = fontObjToBaseFont[targetObj];
+        const fnL = fullName.toLowerCase();
+        const bold = fnL.includes("bold") || fnL.includes("black") || fnL.includes("heavy");
+        const italic = fnL.includes("italic") || fnL.includes("oblique");
+        const family = fullName.replace(/[,]?(bold|italic|oblique|regular|medium|light|heavy|black|semibold)/gi, "").trim() || fullName;
+        result[alias] = { family, bold, italic };
+        result[alias.toLowerCase()] = { family, bold, italic };
+      }
+    }
+    return result;
+  };
+
+  // ── Sanitize PDF special characters ──
+  const sanitizePdfStr = (s: string): string =>
+    s.replace(/\uF0B7/g, "\u2022 ").replace(/\uF0A7/g, "\u25AA ").replace(/\uF076/g, "\u2713 ")
+     .replace(/\uF0D8/g, "\u27A2 ").replace(/[\uF000-\uF0FF]/g, "\u2022 ")
+     .replace(/\uFB01/g, "fi").replace(/\uFB02/g, "fl").replace(/\uFB00/g, "ff")
+     .replace(/\uFB03/g, "ffi").replace(/\uFB04/g, "ffl");
+
   const convertPdfToWord = async () => {
     if (!file) return;
     setIsProcessing(true);
@@ -69,6 +114,9 @@ export default function PdfToWordPage() {
       const pdfjsLib = (window as any).pdfjsLib;
       if (!pdfjsLib) throw new Error("PDF engine failed to load. Please refresh and try again.");
       pdfjsLib.GlobalWorkerOptions.workerSrc = "/js/pdf.worker.min.js";
+
+      // Extract real font names from PDF binary BEFORE text extraction
+      const pdfFontMap = extractPdfFontMap(arrayBuffer);
 
       setStatus("Extracting text and formatting from PDF...");
       const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
@@ -135,22 +183,37 @@ export default function PdfToWordPage() {
           const rawSize = Math.abs(scaleY !== 0 ? scaleY : scaleX);
           const fontSize = Math.round(rawSize > 0 ? rawSize : 12);
 
-          // Font metadata from styles
-          const style = styles[rawItem.fontName] || {};
-          const fontFamilyRaw: string = style.fontFamily || "";
+          // ── Resolve real font name from PDF binary font map ──
+          // pdf.js gives us a generic key like "g_d0_f2" which encodes
+          // the font index (f2 → F2 in PDF resources → Times New Roman,Bold)
+          const fontKey = rawItem.fontName;
+          const fIndexMatch = fontKey.match(/f(\d+)$/i);
+          const fAlias = fIndexMatch ? ("F" + fIndexMatch[1]) : null;
+          const fontInfo = fAlias ? (pdfFontMap[fAlias] || pdfFontMap[fAlias.toLowerCase()]) : null;
 
-          // Detect bold / italic from font family name
-          const fnLower = (rawItem.fontName + fontFamilyRaw).toLowerCase();
-          const bold = fnLower.includes("bold") || fnLower.includes("heavy") || fnLower.includes("black");
-          const italic = fnLower.includes("italic") || fnLower.includes("oblique");
+          let fontFamily: string;
+          let bold: boolean;
+          let italic: boolean;
 
-          // Strip common weight/style suffixes to get a clean family name
-          const fontFamily = fontFamilyRaw
-            .replace(/[-_ ](bold|italic|oblique|regular|medium|light|heavy|black|condensed|expanded|semibold|extrabold)/gi, "")
-            .trim() || "Calibri";
+          if (fontInfo) {
+            // Exact match from PDF binary
+            fontFamily = fontInfo.family || "Times New Roman";
+            bold = fontInfo.bold;
+            italic = fontInfo.italic;
+          } else {
+            // Fallback: use pdf.js styles map
+            const style = styles[fontKey] || {};
+            const fontFamilyRaw: string = style.fontFamily || "";
+            const fnLower = (fontKey + fontFamilyRaw).toLowerCase();
+            bold = fnLower.includes("bold") || fnLower.includes("heavy") || fnLower.includes("black");
+            italic = fnLower.includes("italic") || fnLower.includes("oblique");
+            fontFamily = fontFamilyRaw
+              .replace(/[-_ ](bold|italic|oblique|regular|medium|light|heavy|black|condensed|expanded|semibold|extrabold)/gi, "")
+              .trim() || "Times New Roman";
+          }
 
           rawRuns.push({
-            str: rawItem.str,
+            str: sanitizePdfStr(rawItem.str),
             fontSize,
             fontFamily,
             bold,
@@ -297,12 +360,13 @@ export default function PdfToWordPage() {
           ].join("");
         }).join("");
 
-        let ppr = `<w:spacing w:before="0" w:after="40" w:line="240" w:lineRule="auto"/>`;
+        // Use compact spacing: no extra space before/after lines
+        let ppr = `<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>`;
 
-        // If this is the last line of a page, insert a Hard Section Break (Next Page)
-        // This physically guarantees Word will start the next page on an isolated new page
+        // If this is the last line of a non-last page, insert a Hard Section Break (Next Page)
+        // Standard 1-inch margins (1440 dxa) match typical PDF margins so content fits per page
         if (!isLastPage && isLastLineOfPage) {
-          ppr += `<w:sectPr><w:type w:val="nextPage"/><w:pgSz w:w="${widthDxa}" w:h="${heightDxa}"${orientAttr}/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>`;
+          ppr += `<w:sectPr><w:type w:val="nextPage"/><w:pgSz w:w="${widthDxa}" w:h="${heightDxa}"${orientAttr}/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>`;
         }
 
         xmlParagraphs.push(`<w:p><w:pPr>${ppr}</w:pPr>${wruns}</w:p>`);
@@ -322,7 +386,7 @@ export default function PdfToWordPage() {
     ${xmlParagraphs.join("\n    ")}
     <w:sectPr>
       <w:pgSz w:w="${lastWidthDxa}" w:h="${lastHeightDxa}"${lastOrientAttr}/>
-      <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="720" w:footer="720" w:gutter="0"/>
+      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
     </w:sectPr>
   </w:body>
 </w:document>`;

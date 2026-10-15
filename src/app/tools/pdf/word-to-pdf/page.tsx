@@ -194,7 +194,6 @@ export default function WordToPdfPage() {
 
     const pageWidthMm = docPageSize.isLandscape ? "297mm" : "210mm";
     const pageHeightMm = docPageSize.isLandscape ? "210mm" : "297mm";
-    const pageHeightSafe = docPageSize.isLandscape ? "209.6mm" : "296.6mm";
     const pageOrientation = docPageSize.isLandscape ? "landscape" : "portrait";
 
     // ── Collect ALL CSS from the current page (includes docx-preview styles) ──
@@ -248,11 +247,7 @@ export default function WordToPdfPage() {
       margin: 0 !important;
     }
 
-    /*
-     * Each Word page → exactly one PDF page.
-     * Dimensions are locked to match A4 so browser font metrics cannot spill
-     * across page boundaries or produce trailing blank pages.
-     */
+    /* ── Each Word page → exactly one PDF page ── */
     .docx-wrapper > section,
     .docx-wrapper > article,
     .docx-page {
@@ -261,15 +256,16 @@ export default function WordToPdfPage() {
       margin: 0 auto !important;
       width: ${pageWidthMm} !important;
       max-width: ${pageWidthMm} !important;
-      height: ${pageHeightMm} !important;
-      max-height: ${pageHeightSafe} !important;
+      min-height: 0 !important;
+      height: auto !important;
+      max-height: none !important;
       box-sizing: border-box !important;
       page-break-before: auto !important;
       page-break-after: always !important;
       break-after: page !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-      overflow: hidden !important;
+      page-break-inside: auto !important;
+      break-inside: auto !important;
+      overflow: visible !important;
       background: #fff !important;
       position: relative !important;
     }
