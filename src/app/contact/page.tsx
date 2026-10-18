@@ -6,11 +6,6 @@ import { Footer } from "@/components/Footer";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { Send, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
-// FormSubmit.co endpoint — submissions are emailed to this address.
-// Visitors never see this address; it is only used server-side by FormSubmit.
-const FORMSUBMIT_ENDPOINT =
-  "https://formsubmit.co/ajax/mahaganapathirevu@gmail.com";
-
 type Status = "idle" | "loading" | "success" | "error";
 
 export default function ContactPage() {
@@ -32,8 +27,7 @@ export default function ContactPage() {
     // Guard against duplicate submissions
     if (isSubmitting) return;
 
-    // Basic client-side validation (native `required` + type="email" already
-    // covers most cases, but we add an explicit email format check here)
+    // Basic client-side validation
     if (!formData.email.includes("@") || !formData.email.includes(".")) {
       setErrorMessage("Please enter a valid email address.");
       setStatus("error");
@@ -49,7 +43,7 @@ export default function ContactPage() {
     const form = e.currentTarget;
     const honeypot = (form.elements.namedItem("_honey") as HTMLInputElement)?.value || "";
     if (honeypot.trim().length > 0) {
-      // Bot detected: simulate success without calling third-party API
+      // Bot detected: simulate success without calling backend API
       setStatus("success");
       return;
     }
@@ -58,39 +52,27 @@ export default function ContactPage() {
     setErrorMessage("");
 
     try {
-      const res = await fetch(FORMSUBMIT_ENDPOINT, {
+      const res = await fetch("/api/contact", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json",
         },
         body: JSON.stringify({
-          // Visitor data
           name: formData.name.trim(),
           email: formData.email.trim(),
-          subject: `[ToolKit] ${formData.subject}`,
+          subject: formData.subject,
           message: formData.message.trim(),
-
-          // FormSubmit configuration fields (documented at formsubmit.co)
-          _subject: `[ToolKit Contact] ${formData.subject} from ${formData.name.trim()}`,
-          _captcha: "false",          // We use a honeypot instead
-          _template: "table",         // Neat table layout in the email
-          _replyto: formData.email.trim(), // Reply-to goes back to the visitor
-
-          // Honeypot — bots fill this; humans leave it empty
-          // FormSubmit discards the submission if this field has a value
           _honey: honeypot,
         }),
       });
 
       const data = await res.json();
 
-      // FormSubmit returns { success: "true" } on success
-      if (res.ok && data?.success === "true") {
+      if (res.ok && data?.success) {
         setStatus("success");
       } else {
         throw new Error(
-          data?.message || `Server responded with status ${res.status}.`
+          data?.error || `Server responded with status ${res.status}.`
         );
       }
     } catch (err: unknown) {
