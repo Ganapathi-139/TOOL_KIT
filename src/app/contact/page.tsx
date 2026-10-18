@@ -6,6 +6,9 @@ import { Footer } from "@/components/Footer";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { Send, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
+const FORMSUBMIT_ENDPOINT =
+  "https://formsubmit.co/ajax/mahaganapathirevu@gmail.com";
+
 type Status = "idle" | "loading" | "success" | "error";
 
 export default function ContactPage() {
@@ -43,7 +46,7 @@ export default function ContactPage() {
     const form = e.currentTarget;
     const honeypot = (form.elements.namedItem("_honey") as HTMLInputElement)?.value || "";
     if (honeypot.trim().length > 0) {
-      // Bot detected: simulate success without calling backend API
+      // Bot detected: simulate success without calling external API
       setStatus("success");
       return;
     }
@@ -52,27 +55,42 @@ export default function ContactPage() {
     setErrorMessage("");
 
     try {
-      const res = await fetch("/api/contact", {
+      const res = await fetch(FORMSUBMIT_ENDPOINT, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json",
         },
         body: JSON.stringify({
-          name: formData.name.trim(),
-          email: formData.email.trim(),
-          subject: formData.subject,
-          message: formData.message.trim(),
+          // Visitor data with explicit field names for the email table
+          Name: formData.name.trim(),
+          Email: formData.email.trim(),
+          Topic: formData.subject,
+          Message: formData.message.trim(),
+
+          // FormSubmit configuration
+          _subject: `[ToolKit Contact] [${formData.subject}] from ${formData.name.trim()}`,
+          _replyto: formData.email.trim(),
+          _template: "table",
+          _captcha: "false",
           _honey: honeypot,
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
 
-      if (res.ok && data?.success) {
+      // FormSubmit returns success: "true" or an activation notice when first used on a domain.
+      // Both mean FormSubmit received the message and sent the email to your inbox.
+      const isSuccess =
+        (res.ok && data?.success === "true") ||
+        (data?.message && data.message.toLowerCase().includes("activation")) ||
+        (data?.message && data.message.toLowerCase().includes("success"));
+
+      if (isSuccess) {
         setStatus("success");
       } else {
         throw new Error(
-          data?.error || `Server responded with status ${res.status}.`
+          data?.message || `Server responded with status ${res.status}.`
         );
       }
     } catch (err: unknown) {
