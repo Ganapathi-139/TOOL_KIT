@@ -50,6 +50,8 @@ const nextConfig: NextConfig = {
               "media-src 'self' blob: data:",
               "connect-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://upload.gofile.io https://tmpfile.link https://formsubmit.co blob:",
               "worker-src 'self' blob: https://cdnjs.cloudflare.com",
+              "frame-src 'self' blob: data:",
+              "object-src 'self' blob: data:",
               "frame-ancestors 'self'",
               "base-uri 'self'",
               "form-action 'self' https://formsubmit.co",

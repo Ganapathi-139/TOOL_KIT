@@ -615,17 +615,11 @@ export default function WordToPdfPage() {
                       </div>
 
                       <div className="w-full h-[650px] sm:h-[750px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 shadow-inner">
-                        <object
-                          data={`${serverPdfUrl}#toolbar=1`}
-                          type="application/pdf"
-                          className="w-full h-full"
-                        >
-                          <iframe
-                            src={`${serverPdfUrl}#toolbar=1`}
-                            className="w-full h-full border-0"
-                            title="PDF Preview"
-                          />
-                        </object>
+                        <iframe
+                          src={serverPdfUrl}
+                          className="w-full h-full border-0"
+                          title="PDF Preview"
+                        />
                       </div>
                     </div>
                   </>
