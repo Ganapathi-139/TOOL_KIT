@@ -12,18 +12,18 @@ Designed with a **privacy-first, browser-native processing architecture**: tools
 
 ### 📄 PDF Document Suite (13 Tools)
 - **Word to PDF** (`/tools/pdf/word-to-pdf`): Parse Microsoft Word (.docx) files in-browser and export clean, formatted PDF documents with exact pagination, styles, and vector typography.
-- **PDF to Word (.docx)** (`/tools/pdf/to-word`): Convert PDF files into fully formatted, editable Microsoft Word (.docx) documents, extracting typography, font sizes, font families, bold, italic, and paragraph structures per text run.
+- **PDF to Word (.docx)** (`/tools/pdf/to-word`): Dual-engine conversion featuring dedicated high-accuracy Python `pdf2docx` processing bridge alongside the browser-native fallback converter to generate editable Microsoft Word (.docx) documents.
 - **PDF to PowerPoint (.pptx)** (`/tools/pdf/to-ppt`): Convert PDF document pages into presentation-ready Microsoft PowerPoint slides using client-side OpenXML presentation generation.
 - **PowerPoint to PDF** (`/tools/pdf/ppt-to-pdf`): Convert PowerPoint presentations (.pptx) into paginated PDF documents directly in the browser.
-- **Merge PDF** (`/tools/pdf/merge`): Combine multiple PDF documents into a single file with custom drag-and-drop ordering.
-- **Split PDF** (`/tools/pdf/split`): Extract specific page ranges or split PDFs into individual pages.
-- **Compress PDF** (`/tools/pdf/compress`): Streamline PDF object streams and cross-references with transparent size savings.
+- **Merge PDF** (`/tools/pdf/merge`): Combine multiple PDF documents into a single file with custom drag-and-drop ordering and instant live PDF preview.
+- **Split PDF** (`/tools/pdf/split`): Multi-case range splitting (`1-2, 3-5`), burst all pages, or extract specific pages with instant live PDF preview and one-click ZIP archiving.
+- **Compress PDF** (`/tools/pdf/compress`): Streamline PDF object streams and cross-references with transparent size savings and before-and-after live preview.
 - **Image to PDF** (`/tools/pdf/image-to-pdf`): Convert JPG, PNG, and WebP images to PDF with A4/Letter sizing and margin controls.
 - **PDF to JPG / PNG** (`/tools/pdf/to-jpg`): Render every PDF page into high-resolution images in-browser via PDF.js.
 - **PDF to Text** (`/tools/pdf/to-text`): Extract plain Unicode text from PDF files directly in the browser.
 - **Text to PDF** (`/tools/pdf/text-to-pdf`): Format raw text and generate clean, downloadable PDF documents.
-- **Rotate PDF** (`/tools/pdf/rotate`): Rotate pages by 90°, 180°, or 270° across all pages, odd/even, or custom page selections.
-- **Reorder & Delete Pages** (`/tools/pdf/reorder`): Visually reorder, extract, or delete specific pages before saving.
+- **Rotate PDF** (`/tools/pdf/rotate`): Rotate pages by 90°, 180°, or 270° across all pages, odd/even, or custom page selections with live PDF preview.
+- **Reorder & Delete Pages** (`/tools/pdf/reorder`): Visually reorder, extract, or delete specific pages with thumbnail management and live PDF preview before saving.
 
 ### 📱 QR & Barcode Tools (5 Tools)
 - **File Share via QR** (`/tools/qr/file-share`): Upload any file (up to 100 MB), generate a high-definition QR code, and let recipients scan with their phone camera to download directly—completely ad-free with zero popups or redirects.
@@ -67,8 +67,8 @@ Designed with a **privacy-first, browser-native processing architecture**: tools
 
 ToolKit is built on a strict privacy model:
 
-1. **100% Client-Side In-Browser Execution**: All 37 tools run purely on the user's machine using modern Web APIs (`FileReader`, `Canvas`, `Blob`, `WebCrypto`, `DOMParser`), `pdf-lib`, and `jszip`.
-2. **Zero Server Uploads**: No files, text, images, or documents are ever transmitted to any server. Complete data confidentiality.
+1. **Privacy-First In-Browser Processing**: All 39 tools execute client-side on the user's machine using modern Web APIs (`FileReader`, `Canvas`, `Blob`, `WebCrypto`, `DOMParser`), `pdf-lib`, and `jszip` (with 100MB QR file transfers running zero-log, direct streaming without cloud persistence).
+2. **Zero Server File Logging**: No files, text, images, or documents are ever retained or monetized on any server. Complete data confidentiality.
 3. **DOM XSS Sanitization**: User previewers (Markdown, text tools) escape HTML entities and strictly whitelist safe URL protocols (`http://`, `https://`, `mailto:`), preventing script injection.
 4. **HTTP Security Headers**: Configured with `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `X-XSS-Protection: 1; mode=block`, and strict Referrer policies.
 5. **Zero Vulnerabilities**: 0 vulnerabilities reported by `npm audit --omit=dev`.

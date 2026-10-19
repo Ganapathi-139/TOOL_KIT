@@ -15,6 +15,8 @@ import {
   Scissors,
   ImageDown,
   Minimize2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -32,6 +34,7 @@ export default function RotatePdfPage() {
   const [rotatedPdfSize, setRotatedPdfSize] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const formatFileSize = (bytes: number) => {
@@ -388,38 +391,68 @@ export default function RotatePdfPage() {
 
             {rotatedPdfUrl && (
               <div
-                className="p-6 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-4"
+                className="p-6 rounded-xl border flex flex-col gap-4"
                 style={{
                   backgroundColor: "var(--surface)",
                   borderColor: "rgba(34, 197, 94, 0.3)",
                 }}
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center bg-green-500/10 text-green-500 shrink-0">
-                    <CheckCircle2 size={22} />
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-green-500/10 text-green-500 shrink-0">
+                      <CheckCircle2 size={22} />
+                    </div>
+                    <div>
+                      <h4 className="font-headline font-semibold text-base" style={{ color: "var(--text-primary)" }}>
+                        Rotated PDF is ready!
+                      </h4>
+                      <p className="font-body text-xs" style={{ color: "var(--text-secondary)" }}>
+                        {rotatedPdfSize ? formatFileSize(rotatedPdfSize) : ""}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-headline font-semibold text-base" style={{ color: "var(--text-primary)" }}>
-                      Rotated PDF is ready!
-                    </h4>
-                    <p className="font-body text-xs" style={{ color: "var(--text-secondary)" }}>
-                      {rotatedPdfSize ? formatFileSize(rotatedPdfSize) : ""}
-                    </p>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPreview(!showPreview)}
+                      className="px-4 py-2.5 rounded-lg border font-body text-sm font-medium flex items-center gap-2 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                      style={{
+                        borderColor: "var(--border-warm)",
+                        color: "var(--text-primary)",
+                        backgroundColor: showPreview ? "var(--amber-tint)" : "var(--surface-tinted)",
+                      }}
+                    >
+                      {showPreview ? <EyeOff size={16} /> : <Eye size={16} />}
+                      <span>{showPreview ? "Hide Preview" : "Preview PDF"}</span>
+                    </button>
+
+                    <a
+                      href={rotatedPdfUrl}
+                      download={`rotated-${file?.name || "document.pdf"}`}
+                      className="px-6 py-2.5 rounded-lg font-body text-sm font-semibold flex items-center justify-center gap-2 transition-all text-white"
+                      style={{
+                        backgroundColor: "var(--amber-primary)",
+                      }}
+                    >
+                      <Download size={16} />
+                      <span>Download Rotated PDF</span>
+                    </a>
                   </div>
                 </div>
 
-                <a
-                  href={rotatedPdfUrl}
-                  download={`rotated-${file?.name || "document.pdf"}`}
-                  className="px-6 py-2.5 rounded-lg font-body text-sm font-semibold flex items-center justify-center gap-2 transition-all"
-                  style={{
-                    backgroundColor: "var(--amber-primary)",
-                    color: "#FFFFFF",
-                  }}
-                >
-                  <Download size={16} />
-                  Download Rotated PDF
-                </a>
+                {showPreview && (
+                  <div
+                    className="border rounded-xl overflow-hidden mt-2"
+                    style={{ borderColor: "var(--border-warm)", height: "540px" }}
+                  >
+                    <iframe
+                      src={rotatedPdfUrl}
+                      title="Rotated PDF Preview"
+                      className="w-full h-full border-0"
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -19,6 +19,8 @@ import {
   Minimize2,
   FileType2,
   Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -40,6 +42,7 @@ export default function MergePdfPage() {
   const [mergeDuration, setMergeDuration] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const formatFileSize = (bytes: number) => {
@@ -381,50 +384,81 @@ export default function MergePdfPage() {
               </div>
             )}
 
-            {/* Merge Success / Download Banner */}
+            {/* Merge Success / Download Banner & Preview */}
             {mergedPdfUrl && (
               <div
-                className="rounded-xl border p-6 flex flex-col sm:flex-row items-center justify-between gap-6"
+                className="rounded-xl border p-6 flex flex-col gap-5"
                 style={{
                   backgroundColor: "var(--surface)",
                   borderColor: "var(--amber-primary)",
                 }}
               >
-                <div className="flex items-start gap-4">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-                    style={{
-                      backgroundColor: "rgba(16, 185, 129, 0.12)",
-                      color: "#10b981",
-                    }}
-                  >
-                    <CheckCircle2 size={22} />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                      style={{
+                        backgroundColor: "rgba(16, 185, 129, 0.12)",
+                        color: "#10b981",
+                      }}
+                    >
+                      <CheckCircle2 size={22} />
+                    </div>
+                    <div>
+                      <h3
+                        className="font-headline font-semibold text-lg"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        Your merged PDF is ready!
+                      </h3>
+                      <p
+                        className="font-body text-sm mt-0.5"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
+                        {mergedPdfSize && formatFileSize(mergedPdfSize)} · Merged in {mergeDuration ?? 0.3}s via local browser memory
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3
-                      className="font-headline font-semibold text-lg"
-                      style={{ color: "var(--text-primary)" }}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPreview(!showPreview)}
+                      className="px-4 py-2.5 rounded-lg border font-body text-sm font-medium flex items-center gap-2 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                      style={{
+                        borderColor: "var(--border-warm)",
+                        color: "var(--text-primary)",
+                        backgroundColor: showPreview ? "var(--amber-tint)" : "var(--surface-tinted)",
+                      }}
                     >
-                      Your merged PDF is ready!
-                    </h3>
-                    <p
-                      className="font-body text-sm mt-0.5"
-                      style={{ color: "var(--text-secondary)" }}
+                      {showPreview ? <EyeOff size={16} /> : <Eye size={16} />}
+                      <span>{showPreview ? "Hide Preview" : "Preview PDF"}</span>
+                    </button>
+
+                    <a
+                      href={mergedPdfUrl}
+                      download="merged_document.pdf"
+                      className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-body font-semibold text-sm text-white transition-transform hover:scale-[1.02]"
+                      style={{ backgroundColor: "var(--amber-primary)" }}
                     >
-                      {mergedPdfSize && formatFileSize(mergedPdfSize)} · Merged in {mergeDuration ?? 0.3}s via local browser memory
-                    </p>
+                      <Download size={18} />
+                      <span>Download Merged PDF</span>
+                    </a>
                   </div>
                 </div>
 
-                <a
-                  href={mergedPdfUrl}
-                  download="merged_document.pdf"
-                  className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-body font-semibold text-sm text-white transition-transform hover:scale-[1.02]"
-                  style={{ backgroundColor: "var(--amber-primary)" }}
-                >
-                  <Download size={18} />
-                  <span>Download Merged PDF</span>
-                </a>
+                {showPreview && (
+                  <div
+                    className="border rounded-xl overflow-hidden mt-2"
+                    style={{ borderColor: "var(--border-warm)", height: "540px" }}
+                  >
+                    <iframe
+                      src={mergedPdfUrl}
+                      title="Merged PDF Preview"
+                      className="w-full h-full border-0"
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
