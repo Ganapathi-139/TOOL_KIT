@@ -69,7 +69,7 @@ export default function WordToPdfPage() {
 
     setFile(selected);
     setIsConverting(true);
-    setConversionStatus("Sending document to LibreOffice conversion service…");
+    setConversionStatus("Converting document…");
 
     try {
       const formData = new FormData();
@@ -82,10 +82,11 @@ export default function WordToPdfPage() {
 
       if (res.status === 503) {
         const data = await res.json().catch(() => null);
-        if (data?.code === "GOTENBERG_URL_MISSING") {
+        if (data?.code === "GOTENBERG_URL_MISSING" || data?.code === "NO_ENGINE") {
           setConfigMissing(true);
           setErrorMessage(
-            "Conversion service is not configured. Please set the GOTENBERG_URL environment variable to a running Gotenberg instance (e.g., https://your-gotenberg.onrender.com)."
+            data?.error ||
+              "Conversion service is not configured. Please set the GOTENBERG_URL environment variable to a running Gotenberg instance (e.g., https://your-gotenberg.onrender.com)."
           );
           return;
         }
@@ -107,7 +108,14 @@ export default function WordToPdfPage() {
 
       setPdfUrl(url);
       setPdfFileName(safeName);
-      setConversionStatus("PDF ready — converted by LibreOffice (100% layout fidelity).");
+      const engine = res.headers.get("X-Conversion-Engine") || "";
+      const engineLabel =
+        engine === "word-com"
+          ? "Microsoft Word"
+          : engine.includes("gotenberg")
+          ? "LibreOffice via Gotenberg"
+          : "conversion service";
+      setConversionStatus(`PDF ready — converted by ${engineLabel} (full layout fidelity).`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMessage(msg);
