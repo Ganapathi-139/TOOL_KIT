@@ -45,6 +45,9 @@ export default function WordToPdfPage() {
     return (bytes / (1024 * 1024)).toFixed(2) + " MB";
   };
 
+  // Gotenberg URL for direct browser calls (bypasses Vercel 4.5MB body limit)
+  const DIRECT_GOTENBERG_URL = process.env.NEXT_PUBLIC_GOTENBERG_URL?.trim();
+
   const handleFile = async (selected: File) => {
     setErrorMessage(null);
     setConfigMissing(false);
@@ -69,53 +72,63 @@ export default function WordToPdfPage() {
 
     setFile(selected);
     setIsConverting(true);
-    setConversionStatus("Converting document…");
 
     try {
-      const formData = new FormData();
-      formData.append("file", selected);
+      let blob: Blob;
 
-      const res = await fetch("/api/convert/docx-to-pdf", {
-        method: "POST",
-        body: formData,
-      });
+      if (DIRECT_GOTENBERG_URL) {
+        // ── Direct browser → Gotenberg (no Vercel body limit) ──
+        setConversionStatus("Sending to LibreOffice conversion service…");
+        const endpoint = `${DIRECT_GOTENBERG_URL.replace(/\/+$/, "")}/forms/libreoffice/convert`;
+        const fd = new FormData();
+        fd.append("files", selected, selected.name);
 
-      if (res.status === 503) {
-        const data = await res.json().catch(() => null);
-        if (data?.code === "GOTENBERG_URL_MISSING" || data?.code === "NO_ENGINE") {
-          setConfigMissing(true);
-          setErrorMessage(
-            data?.error ||
-              "Conversion service is not configured. Please set the GOTENBERG_URL environment variable to a running Gotenberg instance (e.g., https://your-gotenberg.onrender.com)."
+        const res = await fetch(endpoint, { method: "POST", body: fd });
+
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(
+            `Conversion service error (${res.status})${txt ? ": " + txt.slice(0, 200) : "."}`
           );
-          return;
         }
+        blob = await res.blob();
+      } else {
+        // ── Fallback: server-side API route (local dev / Word COM) ──
+        setConversionStatus("Converting document…");
+        const formData = new FormData();
+        formData.append("file", selected);
+
+        const res = await fetch("/api/convert/docx-to-pdf", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (res.status === 503) {
+          const data = await res.json().catch(() => null);
+          if (data?.code === "GOTENBERG_URL_MISSING" || data?.code === "NO_ENGINE") {
+            setConfigMissing(true);
+            setErrorMessage(
+              data?.error ||
+                "Conversion service is not configured. Please set GOTENBERG_URL or NEXT_PUBLIC_GOTENBERG_URL."
+            );
+            return;
+          }
+        }
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => null);
+          throw new Error(
+            errData?.error || `Conversion failed with server status ${res.status}.`
+          );
+        }
+        blob = await res.blob();
       }
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => null);
-        throw new Error(
-          errData?.error || `Conversion failed with server status ${res.status}.`
-        );
-      }
-
-      // Read real binary PDF blob from Gotenberg
-      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-
-      // Preserve original filename with .pdf extension
       const safeName = selected.name.replace(/\.docx$/i, ".pdf");
-
       setPdfUrl(url);
       setPdfFileName(safeName);
-      const engine = res.headers.get("X-Conversion-Engine") || "";
-      const engineLabel =
-        engine === "word-com"
-          ? "Microsoft Word"
-          : engine.includes("gotenberg")
-          ? "LibreOffice via Gotenberg"
-          : "conversion service";
-      setConversionStatus(`PDF ready — converted by ${engineLabel} (full layout fidelity).`);
+      setConversionStatus("PDF ready — converted by LibreOffice (full layout fidelity.");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMessage(msg);
