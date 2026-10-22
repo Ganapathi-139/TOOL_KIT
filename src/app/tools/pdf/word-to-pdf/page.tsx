@@ -47,6 +47,8 @@ export default function WordToPdfPage() {
 
   // Gotenberg URL for direct browser calls (bypasses Vercel 4.5MB body limit)
   const DIRECT_GOTENBERG_URL = process.env.NEXT_PUBLIC_GOTENBERG_URL?.trim();
+  // Supabase anon key (safe to expose - it's a public key)
+  const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
 
   const handleFile = async (selected: File) => {
     setErrorMessage(null);
@@ -77,16 +79,30 @@ export default function WordToPdfPage() {
       let blob: Blob;
 
       if (DIRECT_GOTENBERG_URL) {
-        // ── Direct browser → Gotenberg (no Vercel body limit) ──
-        setConversionStatus("Sending to LibreOffice conversion service…");
+        // ── Direct browser → Gotenberg (bypasses Vercel 4.5MB body limit) ──
+        setConversionStatus("Uploading document to LibreOffice engine…");
         const endpoint = `${DIRECT_GOTENBERG_URL.replace(/\/+$/, "")}/forms/libreoffice/convert`;
         const fd = new FormData();
         fd.append("files", selected, selected.name);
 
-        const res = await fetch(endpoint, { method: "POST", body: fd });
+        setConversionStatus("Converting layout, tables, and typography (large documents may take 30–60s)…");
+
+        let res: Response;
+        try {
+          res = await fetch(endpoint, { method: "POST", body: fd });
+        } catch (fetchErr: unknown) {
+          throw new Error(
+            "Could not reach the conversion service. If the server is waking up from sleep, please wait 20–30 seconds and try again."
+          );
+        }
 
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
+          if (res.status === 503) {
+            throw new Error(
+              "The conversion timed out. If the service just woke up, please try once more."
+            );
+          }
           throw new Error(
             `Conversion service error (${res.status})${txt ? ": " + txt.slice(0, 200) : "."}`
           );
@@ -128,7 +144,7 @@ export default function WordToPdfPage() {
       const safeName = selected.name.replace(/\.docx$/i, ".pdf");
       setPdfUrl(url);
       setPdfFileName(safeName);
-      setConversionStatus("PDF ready — converted by LibreOffice (full layout fidelity.");
+      setConversionStatus("PDF ready — converted by LibreOffice with full layout fidelity.");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMessage(msg);
