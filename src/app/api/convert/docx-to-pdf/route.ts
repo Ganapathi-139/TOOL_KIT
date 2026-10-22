@@ -1,163 +1,156 @@
 import { NextRequest, NextResponse } from "next/server";
-import { spawn } from "child_process";
-import { writeFile, readFile, unlink, mkdir } from "fs/promises";
-import { existsSync } from "fs";
-import path from "path";
-import os from "os";
-import crypto from "crypto";
 
-// This route converts DOCX → PDF using Microsoft Word COM automation (Windows + Word required).
-// On Vercel / Linux / Word-not-installed systems it returns 503 and the client falls back
-// to the browser docx-preview + print approach.
+export const maxDuration = 120; // 2 minutes max for large documents
 
-const PYTHON_SCRIPT = path.join(process.cwd(), "scripts", "docx_to_pdf_win.py");
-const TMP_DIR = path.join(os.tmpdir(), "toolkit-docx-to-pdf");
-
-async function ensureTmpDir() {
-  if (!existsSync(TMP_DIR)) {
-    await mkdir(TMP_DIR, { recursive: true });
-  }
-}
-
-function findPython(): string {
-  // Prefer the specific Python version with pywin32 installed; fall back to PATH
-  const candidates = [
-    "C:\\Users\\mahag\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
-    "python",
-    "python3",
-  ];
-  return candidates[0];
-}
-
-async function runWordConverter(
-  inputPath: string,
-  outputPath: string
-): Promise<{ success: boolean; error?: string }> {
-  return new Promise((resolve) => {
-    const python = findPython();
-    const proc = spawn(/*turbopackIgnore: true*/ python, [PYTHON_SCRIPT, inputPath, outputPath], {
-      timeout: 120_000, // Word can take 30-60s for large documents
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    proc.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
-    proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-
-    proc.on("close", (code) => {
-      if (code === 0 && stdout.trim().startsWith("OK:")) {
-        resolve({ success: true });
-      } else {
-        resolve({
-          success: false,
-          error: stderr.trim() || `Process exited with code ${code}`,
-        });
-      }
-    });
-
-    proc.on("error", (err) => {
-      resolve({
-        success: false,
-        error: `Could not start Python: ${err.message}`,
-      });
-    });
-  });
-}
-
+/**
+ * Server-side Word to PDF conversion route powered by LibreOffice via Gotenberg.
+ * Requires the `GOTENBERG_URL` environment variable pointing to a running Gotenberg instance.
+ */
 export async function POST(req: NextRequest) {
-  // Fast-fail if the Python script doesn't exist (not in local dev with scripts/ dir)
-  if (!existsSync(/*turbopackIgnore: true*/ PYTHON_SCRIPT)) {
-    return NextResponse.json(
-      { error: "Word conversion backend not available on this deployment." },
-      { status: 503 }
-    );
-  }
-
-  let inputPath: string | null = null;
-  let outputPath: string | null = null;
-
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
+    const gotenbergUrl = process.env.GOTENBERG_URL?.trim();
 
-    if (!file) {
-      return NextResponse.json({ error: "A DOCX file is required." }, { status: 400 });
+    // 1. Check if the Gotenberg conversion service is configured
+    if (!gotenbergUrl) {
+      return NextResponse.json(
+        {
+          error:
+            "Conversion service is not configured. Please set the GOTENBERG_URL environment variable to a running Gotenberg instance (e.g., https://your-gotenberg.onrender.com).",
+          code: "GOTENBERG_URL_MISSING",
+        },
+        { status: 503 }
+      );
     }
 
-    const name = file.name.toLowerCase();
-    if (!name.endsWith(".docx")) {
+    // 2. Parse and validate multipart form data
+    let formData: FormData;
+    try {
+      formData = await req.formData();
+    } catch {
       return NextResponse.json(
-        { error: "Only .docx files are supported for high-fidelity conversion." },
+        { error: "Invalid form data submission." },
         { status: 400 }
       );
     }
 
-    const maxSize = 50 * 1024 * 1024; // 50 MB
+    const file = formData.get("file") as File | null;
+    if (!file) {
+      return NextResponse.json(
+        { error: "A DOCX document file is required." },
+        { status: 400 }
+      );
+    }
+
+    const rawName = file.name || "document.docx";
+    const lowerName = rawName.toLowerCase();
+    if (!lowerName.endsWith(".docx")) {
+      return NextResponse.json(
+        { error: "Only Microsoft Word (.docx) files are supported." },
+        { status: 400 }
+      );
+    }
+
+    // Size limit: 50 MB
+    const maxSize = 50 * 1024 * 1024;
     if (file.size > maxSize) {
-      return NextResponse.json({ error: "File too large (max 50 MB)." }, { status: 413 });
+      return NextResponse.json(
+        { error: "File exceeds the 50 MB size limit." },
+        { status: 413 }
+      );
     }
 
     const arrayBuffer = await file.arrayBuffer();
+    if (arrayBuffer.byteLength < 4) {
+      return NextResponse.json(
+        { error: "Uploaded file is empty or corrupted." },
+        { status: 400 }
+      );
+    }
 
     // Verify DOCX magic bytes (PK ZIP header: 50 4B 03 04)
     const header = Buffer.from(arrayBuffer.slice(0, 4));
     if (header[0] !== 0x50 || header[1] !== 0x4b) {
       return NextResponse.json(
-        { error: "Uploaded file is not a valid .docx document." },
+        { error: "The uploaded file is not a valid .docx document." },
         { status: 400 }
       );
     }
 
-    await ensureTmpDir();
-    const id = crypto.randomBytes(8).toString("hex");
-    inputPath = path.join(TMP_DIR, `${id}.docx`);
-    outputPath = path.join(TMP_DIR, `${id}.pdf`);
+    // 3. Prepare Gotenberg LibreOffice conversion request
+    const endpoint = `${gotenbergUrl.replace(/\/+$/, "")}/forms/libreoffice/convert`;
+    const gotenbergFormData = new FormData();
+    const fileBlob = new Blob([arrayBuffer], {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    // Gotenberg's LibreOffice endpoint expects input files in the 'files' field
+    gotenbergFormData.append("files", fileBlob, rawName);
 
-    await writeFile(inputPath, Buffer.from(arrayBuffer));
-
-    const result = await runWordConverter(inputPath, outputPath);
-
-    if (!result.success) {
-      console.error("[docx-to-pdf API] Word conversion failed:", result.error);
+    let res: Response;
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        body: gotenbergFormData,
+        signal: AbortSignal.timeout(90_000), // 90s timeout for complex documents
+      });
+    } catch (networkErr: unknown) {
+      const msg = networkErr instanceof Error ? networkErr.message : String(networkErr);
+      console.error("[docx-to-pdf API] Gotenberg connection failed:", msg);
       return NextResponse.json(
         {
-          error: "Word PDF conversion failed.",
-          details: result.error,
+          error: `Could not connect to the Gotenberg conversion service at ${gotenbergUrl}. Please ensure the service is running and accessible.`,
+          details: msg,
         },
+        { status: 502 }
+      );
+    }
+
+    // 4. Handle Gotenberg error responses
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.error(`[docx-to-pdf API] Gotenberg returned HTTP ${res.status}:`, errText);
+
+      let clientError = `Conversion failed with status ${res.status}.`;
+      if (res.status === 413) {
+        clientError = "Document exceeds the maximum body size allowed by the Gotenberg server.";
+      } else if (res.status === 400) {
+        clientError = "Gotenberg rejected the document as invalid or unsupported.";
+      } else if (errText.trim()) {
+        clientError = `Gotenberg error: ${errText.slice(0, 200).trim()}`;
+      }
+
+      return NextResponse.json(
+        { error: clientError, statusCode: res.status },
         { status: 500 }
       );
     }
 
-    const pdfBuffer = await readFile(outputPath);
-    const safeName = file.name
-      .replace(/\.docx$/i, "")
-      .replace(/[^\w.\- ]/g, "_")
-      .slice(0, 100) || "converted_document";
+    const pdfBuffer = await res.arrayBuffer();
+    if (!pdfBuffer || pdfBuffer.byteLength === 0) {
+      return NextResponse.json(
+        { error: "Conversion server returned an empty PDF document." },
+        { status: 500 }
+      );
+    }
+
+    // 5. Preserve original filename with .pdf extension
+    const baseName = rawName.replace(/\.docx$/i, "").trim() || "document";
+    const safeBaseName = baseName.replace(/["\r\n\t]/g, "_");
+    const outputPdfName = `${safeBaseName}.pdf`;
 
     return new NextResponse(pdfBuffer, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${safeName}.pdf"; filename*=UTF-8''${encodeURIComponent(safeName)}.pdf`,
-        "Content-Length": pdfBuffer.length.toString(),
-        "X-Conversion-Engine": "word-com",
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(outputPdfName)}"; filename*=UTF-8''${encodeURIComponent(outputPdfName)}`,
+        "Content-Length": pdfBuffer.byteLength.toString(),
+        "X-Conversion-Engine": "gotenberg-libreoffice",
       },
     });
   } catch (err: unknown) {
-    console.error("[docx-to-pdf API]", err);
+    console.error("[docx-to-pdf API] Unhandled error:", err);
     return NextResponse.json(
-      { error: "Internal server error during conversion." },
+      { error: "An unexpected error occurred during document conversion." },
       { status: 500 }
     );
-  } finally {
-    // Always clean up temp files
-    for (const f of [inputPath, outputPath]) {
-      if (f && existsSync(/*turbopackIgnore: true*/ f)) {
-        await unlink(f).catch(() => {});
-      }
-    }
   }
 }
-
-export const maxDuration = 120; // 2 minutes max for large documents
