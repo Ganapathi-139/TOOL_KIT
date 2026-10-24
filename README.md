@@ -1,190 +1,189 @@
-# ToolKit 🛠️
+# ToolKit — Free, Privacy-First Online Tools Suite
 
-A modern, fast, privacy-first web utility suite built with **Next.js 16**, **React 19**, and **Tailwind CSS v4**.
+<p align="center">
+  <img src="public/icon.png" width="96" height="96" alt="ToolKit Logo" />
+</p>
 
-ToolKit provides **39 essential everyday utilities** spanning PDF document tools, QR & barcode generation, image optimization, academic calculation tools, developer utilities, and productivity helpers.
+<p align="center">
+  <strong>39 fast, free, in-browser utilities for students, developers, and office workers.</strong><br>
+  No sign-ups. No subscriptions. No ads. 100% client-side processing by design.
+</p>
 
-Designed with a **privacy-first, browser-native processing architecture**: tools—including document conversions like Word to PDF, PDF to Word, PDF to PowerPoint, and PowerPoint to PDF—execute directly inside the user's browser, keeping your data confidential.
-
----
-
-## ✨ Available Tools (39 Tools Across 6 Categories)
-
-### 📄 PDF Document Suite (13 Tools)
-- **Word to PDF** (`/tools/pdf/word-to-pdf`): Convert Microsoft Word (.docx) files to PDF entirely inside your browser using `docx-preview` for OpenXML rendering and the browser print engine. Includes interactive document preview before saving. No files are ever sent to any server.
-- **PDF to Word (.docx)** (`/tools/pdf/to-word`): 100% browser-native conversion using PDF.js text/font extraction and OpenXML packaging (`jszip`). Includes interactive `docx-preview` document reader, side-by-side original/converted comparison tabs, and clean page flow. Run ToolKit locally for enhanced table and layout fidelity with the `pdf2docx` engine.
-- **PDF to PowerPoint (.pptx)** (`/tools/pdf/to-ppt`): Convert PDF document pages into presentation-ready Microsoft PowerPoint slides using client-side OpenXML presentation generation.
-- **PowerPoint to PDF** (`/tools/pdf/ppt-to-pdf`): Convert PowerPoint presentations (.pptx) into paginated PDF documents directly in the browser.
-- **Merge PDF** (`/tools/pdf/merge`): Combine multiple PDF documents into a single file with custom drag-and-drop ordering and instant live PDF preview.
-- **Split PDF** (`/tools/pdf/split`): Multi-case range splitting (`1-2, 3-5`), burst all pages, or extract specific pages with instant live PDF preview and one-click ZIP archiving.
-- **Compress PDF** (`/tools/pdf/compress`): Streamline PDF object streams and cross-references with transparent size savings and before-and-after live preview.
-- **Image to PDF** (`/tools/pdf/image-to-pdf`): Convert JPG, PNG, and WebP images to PDF with A4/Letter sizing and margin controls.
-- **PDF to JPG / PNG** (`/tools/pdf/to-jpg`): Render every PDF page into high-resolution images in-browser via PDF.js.
-- **PDF to Text** (`/tools/pdf/to-text`): Extract plain Unicode text from PDF files directly in the browser.
-- **Text to PDF** (`/tools/pdf/text-to-pdf`): Format raw text and generate clean, downloadable PDF documents.
-- **Rotate PDF** (`/tools/pdf/rotate`): Rotate pages by 90°, 180°, or 270° across all pages, odd/even, or custom page selections with live PDF preview.
-- **Reorder & Delete Pages** (`/tools/pdf/reorder`): Visually reorder, extract, or delete specific pages with thumbnail management and live PDF preview before saving.
-
-### 📱 QR & Barcode Tools (5 Tools)
-- **File Share via QR** (`/tools/qr/file-share`): Upload any file (up to 100 MB), generate a high-definition QR code, and let recipients scan with their phone camera to download directly—completely ad-free with zero popups or redirects. Includes **automatic phone-ready domain routing** (intelligently routing through ToolKit's public domain `https://toolkit.sgscreations.in` when running on localhost to prevent mobile camera "localhost can't be reached" connection failures) with instant 1-click domain switcher (`🌐 Phone Ready`, `💻 Localhost`, `📡 Local Wi-Fi IP`).
-- **QR Code Generator** (`/tools/qr/generator`): Custom QR codes for URLs, text, email, and phone with instant PNG/SVG export.
-- **Wi-Fi QR Code** (`/tools/qr/wifi`): Instant Wi-Fi connection QR code for guests (supporting WPA/WPA2/WEP/Open).
-- **vCard QR Code** (`/tools/qr/vcard`): Encode contact address book cards (Name, Phone, Email, Org, Address).
-- **QR Code Scanner** (`/tools/qr/scanner`): Scan and decode QR codes via live webcam or uploaded image files.
-
-### 🖼️ Image Utilities (3 Tools)
-- **Image Resizer & Transformer** (`/tools/image/resize`): Resize dimensions, lock aspect ratios, rotate, flip, and strip EXIF metadata.
-- **Image Compressor** (`/tools/image/compress`): Compress JPG, PNG, and WebP with quality sliders and immediate size previews.
-- **Image Converter** (`/tools/image/convert`): Convert images between PNG, JPEG, and WebP formats using browser canvas rendering.
-
-### 🎓 Student & Academic Tools (6 Tools)
-- **CGPA & SGPA Calculator** (`/tools/student/gpa`): Calculate semester SGPA and cumulative CGPA across various grading scales.
-- **Attendance Tracker** (`/tools/student/attendance`): Track class attendance percentages, bunk margin, and target forecasting.
-- **Scientific Calculator** (`/tools/student/scientific-calculator`): Trigonometric functions, logarithms, powers, roots, and calculation tape.
-- **Percentage Calculator** (`/tools/student/percentage-calculator`): Calculate ratios, marks percentages, and percentage increase/decrease.
-- **Word Counter** (`/tools/student/word-counter`): Real-time word, character, sentence, paragraph, and reading-time metrics.
-- **Text Case Converter** (`/tools/student/case-converter`): Convert between UPPERCASE, lowercase, Title Case, camelCase, snake_case, and kebab-case.
-
-### 💻 Developer Tools (7 Tools)
-- **JSON Formatter & Validator** (`/tools/developer/json`): Indent, validate, minify, and inspect JSON with exact line/column syntax errors.
-- **Base64 Encoder/Decoder** (`/tools/developer/base64`): Encode and decode text or binary strings safely in-browser.
-- **Regex Tester** (`/tools/developer/regex`): Live regular expression tester with match highlighting and regex capture groups.
-- **Cryptographic Hash Generator** (`/tools/developer/hash`): Generate SHA-1, SHA-256, SHA-384, and SHA-512 digests via WebCrypto.
-- **UUID / GUID Generator** (`/tools/developer/uuid`): Generate cryptographically secure RFC 4122 v4 UUIDs in bulk.
-- **URL Encoder/Decoder** (`/tools/developer/url`): Percent-encode URLs and parse query parameter tables.
-- **Markdown Editor & Preview** (`/tools/developer/markdown`): Live split-pane markdown editor with HTML preview, XSS sanitization, and file download.
-
-### ⏱️ Everyday Utilities (5 Tools)
-- **Password Generator** (`/tools/utilities/password-generator`): Hardware-random high-entropy password generator with security strength meter.
-- **Code-128 Barcode Generator** (`/tools/utilities/barcode`): Generate standard 1D linear barcodes with custom dimensions and export options.
-- **Text to Speech** (`/tools/utilities/text-to-speech`): Natural voice synthesis with speed and pitch controls via the Web Speech API.
-- **Unit Converter** (`/tools/utilities/unit-converter`): Convert length, mass, temperature, area, volume, and digital storage.
-- **Pomodoro Timer** (`/tools/utilities/pomodoro`): Productivity focus timer with work/break intervals and session tracking.
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-16.4.0-black?style=flat&logo=next.js" alt="Next.js" />
+  <img src="https://img.shields.io/badge/React-19.3.0-blue?style=flat&logo=react" alt="React 19" />
+  <img src="https://img.shields.io/badge/TypeScript-5.x-blue?style=flat&logo=typescript" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-v4-38B2AC?style=flat&logo=tailwind-css" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" />
+</p>
 
 ---
 
-## 🔒 Privacy & Security
+## 🌟 Why ToolKit?
 
-ToolKit is built on a strict privacy model:
+Most online tool websites force you to upload sensitive contracts, student papers, or personal photos to remote cloud servers laden with subscription paywalls and invasive banner ads.
 
-1. **Privacy-First In-Browser Processing**: All 39 tools execute client-side on the user's machine using modern Web APIs (`FileReader`, `Canvas`, `Blob`, `WebCrypto`, `DOMParser`), `pdf-lib`, `docx-preview`, and `jszip`. Zero files are ever uploaded to remote servers.
-2. **Zero Server File Logging**: No files, text, images, or documents are ever retained or monetized on any server. Complete data confidentiality.
-3. **DOM XSS Sanitization**: User previewers (Markdown, text tools) escape HTML entities and strictly whitelist safe URL protocols (`http://`, `https://`, `mailto:`), preventing script injection.
-4. **HTTP Security Headers**: Configured with `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `X-XSS-Protection: 1; mode=block`, and strict Referrer policies.
-5. **Zero Vulnerabilities**: 0 vulnerabilities reported by `npm audit --omit=dev`.
-
----
-
-## ⚡ 1-Click Free Deployment on Vercel
-
-Because all tools are 100% browser-native with zero backend server dependencies or serverless limits:
-
-1. Push your code to GitHub (or fork this repo).
-2. Go to [Vercel](https://vercel.com/) and click **"Add New Project"**.
-3. Import your GitHub repository (`Ganapathi-139/TOOL_KIT`).
-4. Set **Root Directory** to `tool-kit` (if repository contains subfolders) or leave as `./`.
-5. Click **Deploy** — your app will be live within seconds on Vercel's global CDN at $0 cost!
+**ToolKit does things differently:**
+- 🔒 **Privacy-First**: 100% of document processing happens inside your browser's RAM using WebAssembly and modern JavaScript APIs. Your documents never touch our servers.
+- ⚡ **Instant Execution**: Because computations run locally on your device, operations execute immediately without waiting for slow upload and download queues.
+- 🎯 **Zero Subscriptions or Paywalls**: Every single tool is free and accessible with no file size counters or account creation required.
+- 🎨 **Modern Interface**: Designed with warm amber visual accents, smooth responsive layouts, and seamless dark/light theme switching.
 
 ---
 
-## 🚀 Local Development
+## 🛠️ Complete Tools Catalogue (39 Tools)
+
+### 📄 PDF Tools (13)
+| Tool | Description |
+|---|---|
+| **Word to PDF** | 100% browser-native conversion with OpenXML preview and print-to-PDF export. Zero server dependency. |
+| **PDF to Word** | Client-side text & layout extraction into editable DOCX. Optional offline Python engine for enhanced table fidelity. |
+| **Merge PDF** | Combine multiple PDF files into one ordered document with live preview. |
+| **Split PDF** | Multi-case range splitting (`1-2, 3-5`), burst all pages, live preview & ZIP download. |
+| **Compress PDF** | Reduce PDF file size with adjustable DPI compression presets and before/after preview. |
+| **Rotate PDF** | Permanently rotate pages (90°, 180°, 270°) with live PDF preview. |
+| **Reorder PDF** | Drag and drop visual thumbnail reorganization with live PDF preview. |
+| **Image to PDF** | Convert JPG, PNG, and WebP images into paginated PDFs. |
+| **Text to PDF** | Convert plain text or notes into formatted PDF documents. |
+| **PPT to PDF** | Convert presentations into shareable PDF format. |
+| **PDF to JPG** | Extract high-resolution images of each page (single or ZIP). |
+| **PDF to PPT** | Convert PDF presentation pages into PowerPoint slides. |
+| **PDF to Text** | Extract all readable text from documents without formatting. |
+
+### 📱 QR Code Tools (5)
+| Tool | Description |
+|---|---|
+| **File Share QR** | Share files up to 100MB via secure vanity QR download links with smart phone-ready domain routing. |
+| **QR Generator** | Generate custom QR codes for URLs, text, and phone numbers. |
+| **QR Scanner** | Scan codes live with camera or upload image files. |
+| **Wi-Fi QR** | Create one-tap join codes for WPA/WPA2/WEP networks. |
+| **vCard QR** | Generate digital contact cards compatible with mobile address books. |
+
+### 🖼️ Image Tools (3)
+| Tool | Description |
+|---|---|
+| **Image Compress** | Compress PNG, JPG, and WebP images with interactive side-by-side comparison. |
+| **Image Convert** | Convert between PNG, JPEG, WebP, GIF, and BMP formats. |
+| **Image Resize** | Scale images by dimensions, percentages, or locked aspect ratios. |
+
+### 🎓 Student Tools (6)
+| Tool | Description |
+|---|---|
+| **Scientific Calculator** | Trigonometry, logarithms, roots, and calculation history. |
+| **GPA Calculator** | Semester GPA and cumulative CGPA calculation with custom credit weighting. |
+| **Attendance Calculator** | Track class attendance and calculate target class attendance goals. |
+| **Percentage Calculator** | Calculate percentages, discounts, taxes, and percentage changes. |
+| **Case Converter** | Toggle between UPPERCASE, lowercase, Title Case, camelCase, snake_case. |
+| **Word Counter** | Real-time counts of words, characters, sentences, and estimated reading time. |
+
+### 💻 Developer Tools (7)
+| Tool | Description |
+|---|---|
+| **JSON Formatter** | Validate, beautify, and minify JSON data with error indicators. |
+| **Hash Generator** | Calculate MD5, SHA-1, SHA-256, and SHA-512 cryptographic hashes. |
+| **Markdown Preview** | Live split-pane markdown editor with instant HTML rendering and export. |
+| **Regex Tester** | Real-time regex pattern testing with flag toggles and match counters. |
+| **URL Encoder/Decoder** | Safe URL-encoding and decoding for strings and parameters. |
+| **UUID Generator** | Generate RFC4122 v4 cryptographically random UUIDs in bulk. |
+| **Base64 Converter** | Encode and decode binary data and text strings to Base64. |
+
+### 🔧 Everyday Utilities (5)
+| Tool | Description |
+|---|---|
+| **Barcode Generator** | Generate CODE128, EAN, and UPC barcodes for products and inventory. |
+| **Password Generator** | Generate cryptographically strong random passwords with custom entropy rules. |
+| **Text to Speech** | Read text aloud using native Web Speech voices with pitch and rate controls. |
+| **Unit Converter** | Multi-unit conversion across Length, Weight, Temp, Area, Volume, Speed, and Data. |
+| **Pomodoro Timer** | Focus session timer with customizable work/break intervals and session metrics. |
+
+---
+
+## 🏗️ Architecture & Technology Stack
+
+- **Framework**: [Next.js 16 (Turbopack, App Router)](https://nextjs.org/)
+- **UI Library**: [React 19](https://react.dev/)
+- **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
+- **Icons**: [Lucide React](https://lucide.dev/)
+- **Theme**: [next-themes](https://github.com/pacocoursey/next-themes)
+- **PDF Engine**: [`pdf-lib`](https://pdf-lib.js.org/) and [`pdf.js`](https://mozilla.github.io/pdf.js/)
+- **Word / OpenXML Engine**: [`jszip`](https://stuk.github.io/jszip/) and [`docx-preview`](https://github.com/VolodymyrBaydalka/docxjs)
+- **Security**: Strict Content-Security-Policy (CSP), HSTS, timing-safe HMAC token verification (`timingSafeEqual`), and SSRF private IP blocking.
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
-- **Node.js**: v18.18+ or v20+ (Node.js 22/24 recommended)
-- **Package Manager**: `npm`, `pnpm`, or `yarn`
+- **Node.js**: Version `20.x` or higher
+- **npm**: Version `10.x` or higher
 
-### Installation
-
-Clone the repository and install dependencies:
-
+### 1. Clone the repository
 ```bash
 git clone https://github.com/Ganapathi-139/TOOL_KIT.git
 cd TOOL_KIT
+```
+
+### 2. Install dependencies
+```bash
 npm install
 ```
 
-### Development Server
+### 3. (Optional) Set up environment variables
+```bash
+cp .env.example .env.local
+```
+Configure your custom variables if needed (e.g. `FILE_SHARE_SECRET`).
 
-Run the development server with Turbopack:
-
+### 4. Run the development server
 ```bash
 npm run dev
 ```
-
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### Production Build
+---
 
-Generate an optimized static production build:
+## 🧪 Available Scripts
 
-```bash
-npm run build
-npm start
-```
+| Script | Command | Purpose |
+|---|---|---|
+| **Development** | `npm run dev` | Starts local Next.js Turbopack dev server. |
+| **Typecheck** | `npx tsc --noEmit` | Runs strict TypeScript compiler check across all routes. |
+| **Lint** | `npm run lint` | Runs ESLint analysis for code quality and Next.js Core Web Vitals. |
+| **Build** | `npm run build` | Compiles optimized production bundle. |
+| **Start** | `npm run start` | Serves compiled production build locally. |
 
 ---
 
-## ⚙️ Environment Configuration
+## 🚢 Deployment
 
-ToolKit works out of the box with **zero required configuration** — all conversions run 100% inside the browser. The only optional settings are for advanced QR File Share behavior:
+### 1-Click Deployment on Vercel (Recommended)
+ToolKit is pre-configured for seamless deployment on Vercel:
+1. Push your repository to GitHub.
+2. Import the project on [Vercel](https://vercel.com/new).
+3. Vercel automatically detects Next.js settings. Click **Deploy**.
 
-```bash
-# [Optional] Persistent 64-character hex secret for signing QR File Share tokens
-# across multi-instance deployments. Auto-generated if not set.
-FILE_SHARE_SECRET=your_persistent_64_character_hex_secret_here
-
-# [Optional] Canonical public site URL for mobile-scannable QR links (defaults to https://toolkit.sgscreations.in)
-NEXT_PUBLIC_SITE_URL=https://toolkit.sgscreations.in
-```
-
-> **Running ToolKit Locally for Enhanced PDF Conversion?** Install Python 3.11+ with `pip install pdf2docx pdf-miner` and run `npm run dev`. PDF to Word conversion will automatically use the native `pdf2docx` engine for full table and layout fidelity.
+*Note: For self-hosted VPS or Docker deployments, detailed guides are available in [`PROJECT_DOCUMENTATION/07_DEPLOYMENT_AND_HOSTING.md`](PROJECT_DOCUMENTATION/07_DEPLOYMENT_AND_HOSTING.md).*
 
 ---
 
-## 🏗️ Project Architecture
+## 📖 Complete Documentation Suite
 
-```
-tool-kit/
-├── public/                 # Static assets, logos, and icons
-├── src/
-│   ├── app/                # Next.js App Router (All 100% Client-Side Routes)
-│   │   ├── layout.tsx      # Root layout with ThemeProvider and font configuration
-│   │   ├── page.tsx        # Homepage with hero, category highlights, and real-time search
-│   │   ├── globals.css     # CSS design tokens, warm amber theme, and typography
-│   │   ├── robots.ts       # Automated robots.txt generator
-│   │   ├── sitemap.ts      # Automated dynamic sitemap.xml generator
-│   │   ├── about/          # About page
-│   │   ├── contact/        # Contact page
-│   │   ├── privacy/        # Privacy policy (client-side processing declaration)
-│   │   ├── api/            # Serverless API routes (direct file-share upload handler)
-│   │   └── tools/          # Dedicated tool routes and category hubs
-│   │       ├── pdf/        # PDF suite (13 tools including Word-to-PDF & PDF-to-Word)
-│   │       ├── qr/         # QR suite (5 tools including File Share via QR)
-│   │       ├── image/      # Image tools (3 tools)
-│   │       ├── student/    # Academic utilities (6 tools)
-│   │       ├── developer/  # Dev tools (7 tools)
-│   │       └── utilities/  # Everyday utilities (5 tools)
-│   ├── components/         # Reusable UI components (Header, Footer, Breadcrumb, ThemeProvider)
-│   ├── lib/
-│   │   └── tools-data.ts   # Central registry of categories, tools, icons, and metadata
-│   └── types/              # TypeScript definitions
-├── next.config.ts          # Next.js config with HTTP security headers
-├── eslint.config.mjs       # ESLint 9 configuration
-├── package.json            # Dependencies (pure client-side: pdf-lib, jszip, qrcode)
-└── tsconfig.json           # TypeScript configuration
-```
-
----
-
-## 🎨 Design System
-
-- **Palette**: Warm amber accents (`#D97706`, `#B45309`) with harmonious stone neutrals.
-- **Theme**: Automatic dark and light mode toggle with system preference detection via `next-themes`.
-- **Typography**: Clean, accessible sans-serif hierarchy optimized for productivity.
-- **Responsive**: Fully responsive layouts verified across mobile (375px+), tablet, and desktop viewports.
+Comprehensive architectural, security, and developer guides are included in the [`PROJECT_DOCUMENTATION/`](PROJECT_DOCUMENTATION/) directory:
+- `01_PROJECT_OVERVIEW.md` — Purpose and feature deep-dive
+- `02_TECH_STACK.md` — Complete library and API breakdown
+- `03_FOLDER_AND_FILE_GUIDE.md` — Repository directory guide
+- `04_ARCHITECTURE_AND_DATA_FLOW.md` — Architecture diagrams & data flow
+- `05_FEATURES_AND_CODE_WALKTHROUGH.md` — Code-level tool implementations
+- `06_SETUP_AND_COMMANDS.md` — Setup and troubleshooting
+- `07_DEPLOYMENT_AND_HOSTING.md` — Hosting & serverless limitations
+- `08_SECURITY_AND_PRIVACY.md` — Threat mitigations and security headers
+- `09_TESTING_AND_KNOWN_ISSUES.md` — Test evidence and known limitations
+- `10_GIT_AND_CHANGE_HISTORY.md` — Evolution & architectural pivots
+- `11_BEGINNER_LEARNING_GUIDE.md` — Step-by-step developer tutorial
+- `12_NEXT_STEPS.md` — Maintenance & roadmap
 
 ---
 
 ## 📄 License
 
-This project is open-source and available under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE).
