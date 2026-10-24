@@ -7,7 +7,8 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { Send, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 const FORMSUBMIT_ENDPOINT =
-  "https://formsubmit.co/ajax/mahaganapathirevu@gmail.com";
+  process.env.NEXT_PUBLIC_CONTACT_ENDPOINT ||
+  "https://formsubmit.co/ajax/contact@sgscreations.in";
 
 type Status = "idle" | "loading" | "success" | "error";
 

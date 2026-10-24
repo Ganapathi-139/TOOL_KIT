@@ -19,11 +19,17 @@ async function ensureTmpDir() {
 }
 
 function findPython(): string {
-  // Prefer the Python environment where pdf2docx is installed
-  const preferred = "C:\\Users\\mahag\\AppData\\Local\\Programs\\Python\\Python311\\python.exe";
-  if (existsSync(preferred)) return preferred;
-  const candidates = ["python", "python3", "python3.11", "python3.10"];
-  return candidates[0];
+  // Check custom environment variable first
+  if (process.env.PYTHON_PATH && existsSync(process.env.PYTHON_PATH)) {
+    return process.env.PYTHON_PATH;
+  }
+  // Check standard Windows LocalAppData python location dynamically if available
+  if (process.platform === "win32" && process.env.LOCALAPPDATA) {
+    const defaultWinPy = path.join(process.env.LOCALAPPDATA, "Programs", "Python", "Python311", "python.exe");
+    if (existsSync(defaultWinPy)) return defaultWinPy;
+  }
+  // Default to system PATH
+  return process.platform === "win32" ? "python" : "python3";
 }
 
 async function runPythonConverter(
