@@ -16,7 +16,11 @@ import {
   Scissors,
   X,
   Info,
+  Eye,
+  Layers,
+  FileCheck,
 } from "lucide-react";
+import * as docx from "docx-preview";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Breadcrumb } from "@/components/Breadcrumb";
@@ -99,6 +103,13 @@ export default function PdfToWordPage() {
   const [engineUsed, setEngineUsed] = useState<"server" | "client" | null>(null);
   const [isImageBasedPdf, setIsImageBasedPdf] = useState(false);
 
+  // Preview states
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [convertedDocxBlob, setConvertedDocxBlob] = useState<Blob | null>(null);
+  const [activePreviewTab, setActivePreviewTab] = useState<"docx" | "pdf">("docx");
+  const [isRenderingDocx, setIsRenderingDocx] = useState(false);
+  const docxContainerRef = useRef<HTMLDivElement>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -112,6 +123,27 @@ export default function PdfToWordPage() {
       .catch(() => {});
   }, []);
 
+  // Live render converted .docx document into preview container
+  useEffect(() => {
+    if (convertedDocxBlob && docxContainerRef.current && activePreviewTab === "docx") {
+      setIsRenderingDocx(true);
+      docxContainerRef.current.innerHTML = "";
+      docx
+        .renderAsync(convertedDocxBlob, docxContainerRef.current, undefined, {
+          className: "docx-doc-page",
+          inWrapper: true,
+          breakPages: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+        })
+        .then(() => setIsRenderingDocx(false))
+        .catch((err) => {
+          console.error("DOCX preview render error:", err);
+          setIsRenderingDocx(false);
+        });
+    }
+  }, [convertedDocxBlob, activePreviewTab]);
+
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + " B";
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
@@ -123,10 +155,16 @@ export default function PdfToWordPage() {
       setErrorMessage("Please select a valid PDF file (.pdf).");
       return;
     }
+    if (docxUrl) URL.revokeObjectURL(docxUrl);
+    if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+    const newPdfUrl = URL.createObjectURL(selected);
+    setPdfPreviewUrl(newPdfUrl);
     setFile(selected);
     setDone(false);
     setDocxUrl(null);
     setDocxSize(null);
+    setConvertedDocxBlob(null);
+    setActivePreviewTab("docx");
     setStatus("");
     setErrorMessage(null);
     setEngineUsed(null);
@@ -402,6 +440,8 @@ export default function PdfToWordPage() {
     const url = URL.createObjectURL(blob);
     setDocxUrl(url);
     setDocxSize(blob.size);
+    setConvertedDocxBlob(blob);
+    setActivePreviewTab("docx");
     setDone(true);
     setEngineUsed(engine);
     setStatus(
@@ -592,7 +632,10 @@ export default function PdfToWordPage() {
     setFile(null);
     setDone(false);
     if (docxUrl) URL.revokeObjectURL(docxUrl);
+    if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
     setDocxUrl(null);
+    setPdfPreviewUrl(null);
+    setConvertedDocxBlob(null);
     setDocxSize(null);
     setStatus("");
     setErrorMessage(null);
@@ -734,17 +777,33 @@ export default function PdfToWordPage() {
                   </button>
                 </div>
 
-                {/* Convert button */}
+                {/* Convert button & Pre-conversion PDF preview */}
                 {!isProcessing && !done && (
-                  <button
-                    type="button"
-                    onClick={convertPdfToWord}
-                    className="w-full py-3.5 rounded-xl font-body font-semibold text-sm text-white flex items-center justify-center gap-2 transition-transform hover:scale-[1.01] shadow-sm"
-                    style={{ backgroundColor: "var(--amber-primary)" }}
-                  >
-                    <FileText size={18} />
-                    <span>Convert to Word (.docx)</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={convertPdfToWord}
+                      className="w-full py-3.5 rounded-xl font-body font-semibold text-sm text-white flex items-center justify-center gap-2 transition-transform hover:scale-[1.01] shadow-sm"
+                      style={{ backgroundColor: "var(--amber-primary)" }}
+                    >
+                      <FileText size={18} />
+                      <span>Convert to Word (.docx)</span>
+                    </button>
+
+                    {pdfPreviewUrl && (
+                      <div className="flex flex-col gap-2.5 pt-2">
+                        <div className="flex items-center gap-2">
+                          <Eye size={16} style={{ color: "var(--amber-primary)" }} />
+                          <span className="font-headline font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
+                            Selected PDF Preview
+                          </span>
+                        </div>
+                        <div className="w-full h-[450px] sm:h-[550px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 shadow-inner">
+                          <iframe src={pdfPreviewUrl} className="w-full h-full border-0" title="Selected PDF Preview" />
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {isProcessing && (
@@ -816,6 +875,73 @@ export default function PdfToWordPage() {
                       >
                         Convert Another
                       </button>
+                    </div>
+
+                    {/* ── Document Preview Section ── */}
+                    <div className="flex flex-col gap-3 pt-3 border-t" style={{ borderColor: "var(--border-warm)" }}>
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <Layers size={18} style={{ color: "var(--amber-primary)" }} />
+                          <span className="font-headline font-semibold text-sm sm:text-base" style={{ color: "var(--text-primary)" }}>
+                            Document Preview
+                          </span>
+                        </div>
+
+                        {/* Preview Tabs */}
+                        <div
+                          className="flex items-center p-1 rounded-xl border"
+                          style={{ backgroundColor: "var(--surface-tinted, rgba(0,0,0,0.05))", borderColor: "var(--border-warm)" }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setActivePreviewTab("docx")}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-body font-semibold transition-all ${
+                              activePreviewTab === "docx"
+                                ? "bg-amber-500 text-white shadow-xs"
+                                : "text-slate-600 dark:text-slate-300 hover:text-amber-600"
+                            }`}
+                          >
+                            <FileText size={14} />
+                            <span>Converted Word (.docx)</span>
+                          </button>
+                          {pdfPreviewUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setActivePreviewTab("pdf")}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-body font-semibold transition-all ${
+                                activePreviewTab === "pdf"
+                                  ? "bg-amber-500 text-white shadow-xs"
+                                  : "text-slate-600 dark:text-slate-300 hover:text-amber-600"
+                              }`}
+                            >
+                              <FileType2 size={14} />
+                              <span>Original PDF</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Tab 1: Converted DOCX Preview */}
+                      {activePreviewTab === "docx" && (
+                        <div className="relative w-full min-h-[500px] max-h-[750px] overflow-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-200 dark:bg-slate-950 p-4 shadow-inner">
+                          {isRenderingDocx && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/10 dark:bg-black/40 backdrop-blur-xs rounded-xl z-10">
+                              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border shadow-lg text-xs font-body font-medium">
+                                <Loader2 size={16} className="animate-spin text-amber-500" />
+                                <span>Rendering Word preview…</span>
+                              </div>
+                            </div>
+                          )}
+                          <div ref={docxContainerRef} className="docx-preview-output max-w-full flex flex-col items-center" />
+                        </div>
+                      )}
+
+                      {/* Tab 2: Original PDF Preview */}
+                      {activePreviewTab === "pdf" && pdfPreviewUrl && (
+                        <div className="w-full h-[650px] sm:h-[750px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 shadow-inner">
+                          <iframe src={pdfPreviewUrl} className="w-full h-full border-0" title="Original PDF Preview" />
+                        </div>
+                      )}
                     </div>
 
                     <p
@@ -898,6 +1024,23 @@ export default function PdfToWordPage() {
           </div>
         </div>
       </main>
+      <style jsx global>{`
+        .docx-preview-output .docx-wrapper {
+          background: transparent !important;
+          padding: 8px 0 !important;
+        }
+        .docx-preview-output .docx-wrapper > section.docx {
+          background: #ffffff !important;
+          color: #1a1a1a !important;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18) !important;
+          margin: 0 auto 24px auto !important;
+          border-radius: 4px !important;
+          overflow: hidden !important;
+        }
+        .docx-preview-output .docx-wrapper > section.docx * {
+          color: #1a1a1a !important;
+        }
+      `}</style>
       <Footer />
     </>
   );
