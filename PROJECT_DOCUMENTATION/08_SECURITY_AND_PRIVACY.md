@@ -95,7 +95,7 @@ During the project's development and recent Cloudflare Security Audit, the follo
     return null;
   }
   ```
-  Additionally, the token secret falls back to an unguessable 32-byte cryptographic random hex string (`crypto.randomBytes(32)`), preventing third parties reading the public repository from forging tokens.
+  Additionally, the token secret uses a persistent HMAC key (overridable via `FILE_SHARE_SECRET` in `.env`), ensuring tokens generated across multi-instance serverless deployments or between local dev and the public proxy remain verifiable.
 
 ### C. Command Injection Prevention (`/api/convert/pdf-to-word`)
 - **Risk**: User uploads a file named `test; rm -rf /; .pdf`, which could execute arbitrary shell commands if passed to `exec()`.

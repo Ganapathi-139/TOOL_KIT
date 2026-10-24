@@ -101,17 +101,18 @@ This guide walks through every major tool in the ToolKit repository. For each fe
 - **File**: `src/app/tools/pdf/word-to-pdf/page.tsx`
 - **Input**: A `.docx` Word file.
 - **Processing**:
-  1. Loads `docx-preview` to parse OpenXML format directly into styled HTML elements inside a hidden DOM container.
-  2. Applies `sanitizeHtmlContent` to strip any unsafe script tags or inline handlers.
-  3. Uses `@media print` CSS rules and browser native print API (`window.print()`).
-- **Output**: Direct print-to-PDF export with faithful page layout and fonts.
+  1. Primary Engine: Integrates Gotenberg LibreOffice headless service (`process.env.GOTENBERG_URL`) for pixel-perfect PDF vector conversion.
+  2. Fallback Engine: Client-side `docx-preview` parses OpenXML directly into styled HTML elements inside a sandboxed container, with browser native print engine (`window.print()`).
+  3. Provides an interactive embedded PDF previewer before download.
+- **Output**: Direct print-to-PDF export and downloadable `.pdf` document.
 
 ### 12. PDF to Word
 - **Files**: `src/app/tools/pdf/to-word/page.tsx`, `src/app/api/convert/pdf-to-word/route.ts`, `scripts/pdf2docx_convert.py`
 - **Processing (Dual Engine)**:
   - **Stage 1 (Server API)**: Calls local Python `pdf2docx` subprocess for native desktop-grade table and layout reconstruction.
-  - **Stage 2 (Browser Fallback)**: If running on serverless (Vercel), extracts text runs with PDF.js, reconstructs fonts from binary `BaseFont` maps, groups lines using baseline clustering, and builds a valid `.docx` OpenXML package using `jszip`.
-- **Output**: Editable Microsoft Word `.docx` file.
+  - **Stage 2 (Browser Fallback)**: Extracts text runs with PDF.js, reconstructs fonts from binary `BaseFont` maps, groups lines using baseline clustering, tightens margins to 0.5 in, uses explicit page break runs (`<w:r><w:br w:type="page"/></w:r>`) to eliminate blank pages, and builds a valid `.docx` package using `jszip`.
+  - **Live Preview**: Integrates interactive `docx-preview` reader with side-by-side comparison tabs toggling between the converted Word document and original PDF.
+- **Output**: Editable Microsoft Word `.docx` file with real-time in-app viewer.
 
 ---
 
@@ -148,9 +149,10 @@ This guide walks through every major tool in the ToolKit repository. For each fe
 - **Input**: Any file up to 100MB.
 - **Processing**:
   1. Uploads to temporary storage relay (`tmpfile.link` or `gofile.io`).
-  2. Generates HMAC-SHA256 token encoding safe metadata and expiration.
-  3. Displays a QR code linking to an in-app download page: `/tools/qr/file-share/download?token={token}`.
-  4. Recipient scans QR, verifies token, and streams file via safe proxy.
+  2. Generates HMAC-SHA256 token encoding safe metadata and expiration using a persistent key.
+  3. **Phone-Ready Domain Routing**: When running in local development (`localhost`), automatically points the QR code to ToolKit's public domain (`https://toolkit.sgscreations.in` or `NEXT_PUBLIC_SITE_URL`) so mobile phone cameras can scan and download without encountering "localhost can't be reached" errors.
+  4. Provides an interactive domain selector: 🌐 Phone Ready (Public Domain), 💻 Localhost (This PC), and 📡 Local Wi-Fi IP.
+  5. Recipient scans QR, verifies token signature, and streams file cleanly without ads.
 - **Output**: Shareable QR code and mobile-friendly download page.
 
 ---

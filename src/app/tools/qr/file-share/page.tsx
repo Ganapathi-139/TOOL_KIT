@@ -15,11 +15,17 @@ import {
   ExternalLink,
   Sparkles,
   ShieldCheck,
+  Smartphone,
+  Laptop,
+  Globe,
+  Wifi,
 } from "lucide-react";
 import QRCodeLib from "qrcode";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Breadcrumb } from "@/components/Breadcrumb";
+
+const PUBLIC_DOMAIN = process.env.NEXT_PUBLIC_SITE_URL || "https://toolkit.sgscreations.in";
 
 export default function FileShareQrPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -33,6 +39,11 @@ export default function FileShareQrPage() {
   const [copied, setCopied] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Host and domain selector state (prevents localhost phone scanning failures)
+  const [isLocalhost, setIsLocalhost] = useState(false);
+  const [domainMode, setDomainMode] = useState<"public" | "localhost" | "custom">("public");
+  const [customHost, setCustomHost] = useState("");
+
   // QR Style options
   const [fgColor, setFgColor] = useState("#1A1714");
   const [bgColor, setBgColor] = useState("#FFFFFF");
@@ -42,6 +53,35 @@ export default function FileShareQrPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const MAX_FILE_SIZE_MB = 100;
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const isLocal =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        window.location.hostname === "0.0.0.0" ||
+        window.location.hostname.endsWith(".local");
+      setIsLocalhost(isLocal);
+      // Default to public phone-ready domain when running locally so mobile cameras can reach it
+      setDomainMode(isLocal ? "public" : "localhost");
+    }
+  }, []);
+
+  const getBaseOrigin = (mode: "public" | "localhost" | "custom", customIp?: string) => {
+    if (typeof window === "undefined") return PUBLIC_DOMAIN;
+    if (mode === "public") return PUBLIC_DOMAIN;
+    if (mode === "custom" && customIp?.trim()) {
+      const trimmed = customIp.trim();
+      return trimmed.startsWith("http") ? trimmed : `http://${trimmed}`;
+    }
+    return window.location.origin;
+  };
+
+  const buildDownloadUrl = (token: string, mode: "public" | "localhost" | "custom", customIp?: string) => {
+    if (!token) return "";
+    const base = getBaseOrigin(mode, customIp);
+    return `${base}/tools/qr/file-share/download?token=${encodeURIComponent(token)}`;
+  };
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + " B";
@@ -229,8 +269,8 @@ export default function FileShareQrPage() {
 
       setShareToken(token);
 
-      // Generate in-app ToolKit download URL on your own domain (zero mobile security warnings)
-      const downloadPageUrl = `${window.location.origin}/tools/qr/file-share/download?token=${encodeURIComponent(token)}`;
+      // Generate in-app ToolKit download URL on trusted domain (phone-ready when on localhost)
+      const downloadPageUrl = buildDownloadUrl(token, domainMode, customHost);
       setShareUrl(downloadPageUrl);
 
       setStatusText("Generating scannable QR code...");
@@ -245,6 +285,24 @@ export default function FileShareQrPage() {
       setErrorMessage(errMessage);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleDomainModeChange = (mode: "public" | "localhost" | "custom") => {
+    setDomainMode(mode);
+    if (shareToken) {
+      const newUrl = buildDownloadUrl(shareToken, mode, customHost);
+      setShareUrl(newUrl);
+      generateQr(newUrl, fgColor, bgColor, qrSize);
+    }
+  };
+
+  const handleCustomHostChange = (newHost: string) => {
+    setCustomHost(newHost);
+    if (shareToken && domainMode === "custom") {
+      const newUrl = buildDownloadUrl(shareToken, "custom", newHost);
+      setShareUrl(newUrl);
+      generateQr(newUrl, fgColor, bgColor, qrSize);
     }
   };
 
@@ -571,6 +629,96 @@ export default function FileShareQrPage() {
                           >
                             Scanning opens your clean ToolKit download page on their mobile device. Recipients can view file details and tap Download with <strong>zero security warnings</strong>.
                           </p>
+                        </div>
+
+                        {/* Localhost / Phone Domain Mode Selector */}
+                        <div
+                          className="p-3 rounded-xl border flex flex-col gap-2"
+                          style={{
+                            backgroundColor: "var(--bg-main)",
+                            borderColor: isLocalhost ? "rgba(217, 119, 6, 0.35)" : "var(--border-warm)",
+                          }}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                              <Smartphone size={14} className="text-amber-500" />
+                              Target Device / Domain:
+                            </span>
+                            {isLocalhost && (
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                Localhost Detected
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleDomainModeChange("public")}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                                domainMode === "public"
+                                  ? "bg-amber-500 text-white shadow-sm font-semibold"
+                                  : "bg-black/5 dark:bg-white/5 text-stone-600 dark:text-stone-400 hover:bg-black/10 dark:hover:bg-white/10"
+                              }`}
+                              title="Public link that any smartphone camera can open anywhere"
+                            >
+                              <Globe size={12} />
+                              <span>Phone Ready (Public Web)</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDomainModeChange("localhost")}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                                domainMode === "localhost"
+                                  ? "bg-amber-500 text-white shadow-sm font-semibold"
+                                  : "bg-black/5 dark:bg-white/5 text-stone-600 dark:text-stone-400 hover:bg-black/10 dark:hover:bg-white/10"
+                              }`}
+                              title="Localhost link (for testing in browser on this PC only)"
+                            >
+                              <Laptop size={12} />
+                              <span>This PC (Localhost)</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDomainModeChange("custom")}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                                domainMode === "custom"
+                                  ? "bg-amber-500 text-white shadow-sm font-semibold"
+                                  : "bg-black/5 dark:bg-white/5 text-stone-600 dark:text-stone-400 hover:bg-black/10 dark:hover:bg-white/10"
+                              }`}
+                              title="Custom LAN IP address for phones on the same local Wi-Fi"
+                            >
+                              <Wifi size={12} />
+                              <span>Local Wi-Fi IP</span>
+                            </button>
+                          </div>
+
+                          {domainMode === "public" && isLocalhost && (
+                            <p className="text-[11px] text-amber-700 dark:text-amber-400/90 leading-tight">
+                              ✓ <strong>Phone-ready:</strong> Encoded for ToolKit&apos;s public domain (<span className="font-mono text-[10px]">toolkit.sgscreations.in</span>) so scanning with your phone works seamlessly (phone cameras cannot reach &ldquo;localhost&rdquo;).
+                            </p>
+                          )}
+
+                          {domainMode === "localhost" && (
+                            <p className="text-[11px] text-stone-500 dark:text-stone-400 leading-tight">
+                              ⚠️ <strong>Localhost only:</strong> Will open only on this computer. Phone cameras cannot connect to &ldquo;localhost&rdquo;.
+                            </p>
+                          )}
+
+                          {domainMode === "custom" && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <input
+                                type="text"
+                                placeholder="e.g. 192.168.1.15:3000"
+                                value={customHost}
+                                onChange={(e) => handleCustomHostChange(e.target.value)}
+                                className="px-2.5 py-1 rounded-lg text-xs font-mono border bg-transparent border-amber-400/60 dark:border-amber-600 outline-none flex-1"
+                              />
+                              <span className="text-[10px] text-stone-500">Your LAN IP</span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Share link box */}

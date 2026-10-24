@@ -28,6 +28,8 @@ This document provides a chronological analysis of the ToolKit repository's evol
 | **`3317a5f`** | 2026-10-15 | `fix: PDF-to-Word binary font map and no white pages; Word-to-PDF no forced heights` | Extracted binary BaseFont mappings to restore original fonts (Times New Roman, Arial). |
 | **`5a432c0`** | 2026-10-15 | `feat: PDF-to-Word API-first engine (pdf2docx) with browser fallback...` | **Major Architectural Shift #3**: Introduced dual-engine approach (local Python bridge + browser fallback). |
 | **`8e9b5d7`** | 2026-10-15 | `fix(security): resolve Cloudflare audit findings - SSRF protection...` | **Major Security Hardening**: Implemented Cloudflare Security Audit standard (SSRF blocking, constant-time HMAC, CSP, HSTS, XSS sanitization). |
+| **`f3a8b21`** | 2026-10-24 | `feat: high-fidelity docx-preview reader & margin optimization for PDF/Word` | Integrated interactive `docx-preview` document viewer, side-by-side original/converted comparison tabs, tightened margins to 0.5 in, and eliminated blank pages. |
+| **`e7b9c42`** | 2026-10-24 | `fix(qr): phone-ready domain routing for file share QR on localhost` | Automatically routes localhost QR links through public domain (`toolkit.sgscreations.in`) so phone cameras scan and download without connection errors, with 1-click domain switcher. |
 
 ---
 
@@ -50,3 +52,7 @@ This document provides a chronological analysis of the ToolKit repository's evol
 ### Pivot 4: Cloudflare Security Audit Hardening
 - **Before (`Commit 5a432c0`)**: Token secrets were static, external URLs were unvalidated, and security headers were incomplete.
 - **The Solution (`Commit 8e9b5d7`)**: Implemented the official Cloudflare Security Audit standards. Hardened against SSRF by blocking all private IPs (`127.0.0.1`, `169.254.169.254`), enforced `timingSafeEqual` for cryptographic signatures, added HSTS and strict CSP headers, and sanitized document preview HTML against DOM XSS.
+
+### Pivot 5: Phone-Ready QR Generation for Localhost Environments
+- **The Challenge**: When developing or testing locally on `http://localhost:3000`, scanning the generated QR code with a smartphone camera pointed the mobile browser to `http://localhost:3000` on the phone itself, causing "This site can't be reached / connection refused" because the phone does not host the local server.
+- **The Solution**: ToolKit automatically detects localhost development environments and routes QR codes through the verified public production domain (`https://toolkit.sgscreations.in`), backed by a persistent token secret. It also provides an interactive 1-click domain toggle (Phone Ready vs Localhost vs Local Wi-Fi IP) directly above the QR link box so developers can test across devices seamlessly.

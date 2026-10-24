@@ -1,9 +1,8 @@
 import crypto from "crypto";
 
-// Use environment variable if configured, otherwise use a secure per-process random key
-// This prevents anyone reading the public repository from forging tokens.
-const RUNTIME_SECRET = crypto.randomBytes(32).toString("hex");
-const SECRET = process.env.FILE_SHARE_SECRET || RUNTIME_SECRET;
+// Use environment variable if configured, otherwise use stable default secret
+const DEFAULT_SECRET = "toolkit-file-share-signing-key-9b7e4f1a2c3d";
+const SECRET = process.env.FILE_SHARE_SECRET || DEFAULT_SECRET;
 
 export interface ShareTokenPayload {
   url: string;

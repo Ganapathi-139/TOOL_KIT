@@ -11,8 +11,8 @@ Designed with a **privacy-first, browser-native processing architecture**: tools
 ## ✨ Available Tools (39 Tools Across 6 Categories)
 
 ### 📄 PDF Document Suite (13 Tools)
-- **Word to PDF** (`/tools/pdf/word-to-pdf`): Parse Microsoft Word (.docx) files in-browser and export clean, formatted PDF documents with exact pagination, styles, and vector typography.
-- **PDF to Word (.docx)** (`/tools/pdf/to-word`): Dual-engine conversion featuring dedicated high-accuracy Python `pdf2docx` processing bridge alongside the browser-native fallback converter to generate editable Microsoft Word (.docx) documents.
+- **Word to PDF** (`/tools/pdf/word-to-pdf`): Parse Microsoft Word (.docx) files and export clean, formatted PDF documents with exact pagination, styles, and vector typography via Gotenberg LibreOffice engine with client-side browser print fallback and live PDF preview.
+- **PDF to Word (.docx)** (`/tools/pdf/to-word`): Dual-engine conversion featuring dedicated high-accuracy Python `pdf2docx` processing bridge alongside the browser-native fallback converter. Includes interactive `docx-preview` document reader, side-by-side original/converted comparison tabs, and optimized page flow without blank pages.
 - **PDF to PowerPoint (.pptx)** (`/tools/pdf/to-ppt`): Convert PDF document pages into presentation-ready Microsoft PowerPoint slides using client-side OpenXML presentation generation.
 - **PowerPoint to PDF** (`/tools/pdf/ppt-to-pdf`): Convert PowerPoint presentations (.pptx) into paginated PDF documents directly in the browser.
 - **Merge PDF** (`/tools/pdf/merge`): Combine multiple PDF documents into a single file with custom drag-and-drop ordering and instant live PDF preview.
@@ -26,7 +26,7 @@ Designed with a **privacy-first, browser-native processing architecture**: tools
 - **Reorder & Delete Pages** (`/tools/pdf/reorder`): Visually reorder, extract, or delete specific pages with thumbnail management and live PDF preview before saving.
 
 ### 📱 QR & Barcode Tools (5 Tools)
-- **File Share via QR** (`/tools/qr/file-share`): Upload any file (up to 100 MB), generate a high-definition QR code, and let recipients scan with their phone camera to download directly—completely ad-free with zero popups or redirects.
+- **File Share via QR** (`/tools/qr/file-share`): Upload any file (up to 100 MB), generate a high-definition QR code, and let recipients scan with their phone camera to download directly—completely ad-free with zero popups or redirects. Includes **automatic phone-ready domain routing** (intelligently routing through ToolKit's public domain `https://toolkit.sgscreations.in` when running on localhost to prevent mobile camera "localhost can't be reached" connection failures) with instant 1-click domain switcher (`🌐 Phone Ready`, `💻 Localhost`, `📡 Local Wi-Fi IP`).
 - **QR Code Generator** (`/tools/qr/generator`): Custom QR codes for URLs, text, email, and phone with instant PNG/SVG export.
 - **Wi-Fi QR Code** (`/tools/qr/wifi`): Instant Wi-Fi connection QR code for guests (supporting WPA/WPA2/WEP/Open).
 - **vCard QR Code** (`/tools/qr/vcard`): Encode contact address book cards (Name, Phone, Email, Org, Address).
@@ -120,6 +120,24 @@ Generate an optimized static production build:
 ```bash
 npm run build
 npm start
+```
+
+---
+
+## ⚙️ Environment Configuration
+
+ToolKit works out of the box with zero required configuration. To enable optional high-fidelity server rendering or custom public domains, create a `.env.local` file (see `.env.example`):
+
+```bash
+# [Optional] Gotenberg LibreOffice endpoint for high-fidelity Word to PDF conversion
+GOTENBERG_URL=https://your-gotenberg.onrender.com
+
+# [Optional] Persistent 64-character hex secret for signing QR File Share tokens
+FILE_SHARE_SECRET=your_persistent_64_character_hex_secret_here
+
+# [Optional] Canonical public site URL (defaults to https://toolkit.sgscreations.in)
+# Automatically utilized for mobile-scannable QR links generated during localhost development
+NEXT_PUBLIC_SITE_URL=https://toolkit.sgscreations.in
 ```
 
 ---
