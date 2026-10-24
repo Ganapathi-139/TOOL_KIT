@@ -5,7 +5,7 @@ const footerLinks = [
   { label: "Contact", href: "/contact" },
   { label: "Privacy", href: "/privacy" },
   { label: "Terms", href: "/terms" },
-  { label: "GitHub", href: "https://github.com", external: true },
+  { label: "GitHub", href: "https://github.com/Ganapathi-139/TOOL_KIT", external: true },
 ];
 
 export function Footer() {
