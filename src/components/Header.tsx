@@ -89,10 +89,13 @@ export function Header() {
           <button
             onClick={toggleTheme}
             aria-label={
-              resolvedTheme === "dark"
-                ? "Switch to light mode"
-                : "Switch to dark mode"
+              mounted
+                ? resolvedTheme === "dark"
+                  ? "Switch to light mode"
+                  : "Switch to dark mode"
+                : "Toggle theme"
             }
+            suppressHydrationWarning
             className="w-11 h-11 flex items-center justify-center rounded-lg border transition-colors duration-150"
             style={{
               borderColor: "var(--border-warm)",
