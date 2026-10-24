@@ -99,7 +99,7 @@ Clone the repository and install dependencies:
 
 ```bash
 git clone https://github.com/Ganapathi-139/TOOL_KIT.git
-cd tool-kit
+cd TOOL_KIT
 npm install
 ```
 
