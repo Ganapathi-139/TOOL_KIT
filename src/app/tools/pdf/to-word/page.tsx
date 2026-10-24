@@ -531,12 +531,13 @@ export default function PdfToWordPage() {
           ppr = `<w:pStyle w:val="Heading${headingLevel}"/>` + ppr;
         }
 
-        // Page section break at last paragraph of non-last page
+        // Standard page break at end of non-last page (eliminates unwanted blank pages)
+        let pageBreakRun = "";
         if (!isLastPage && isLastParaOfPage) {
-          ppr += `<w:sectPr><w:type w:val="nextPage"/><w:pgSz w:w="${widthDxa}" w:h="${heightDxa}"${orientAttr}/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>`;
+          pageBreakRun = `<w:r><w:br w:type="page"/></w:r>`;
         }
 
-        xmlParagraphs.push(`<w:p><w:pPr>${ppr}</w:pPr>${wruns}</w:p>`);
+        xmlParagraphs.push(`<w:p><w:pPr>${ppr}</w:pPr>${wruns}${pageBreakRun}</w:p>`);
       });
     });
 
@@ -553,7 +554,7 @@ export default function PdfToWordPage() {
     ${xmlParagraphs.join("\n    ")}
     <w:sectPr>
       <w:pgSz w:w="${lastWidthDxa}" w:h="${lastHeightDxa}"${lastOrientAttr}/>
-      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+      <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="360" w:footer="360" w:gutter="0"/>
     </w:sectPr>
   </w:body>
 </w:document>`;

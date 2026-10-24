@@ -19,9 +19,11 @@ async function ensureTmpDir() {
 }
 
 function findPython(): string {
-  // Try common Python executables
+  // Prefer the Python environment where pdf2docx is installed
+  const preferred = "C:\\Users\\mahag\\AppData\\Local\\Programs\\Python\\Python311\\python.exe";
+  if (existsSync(preferred)) return preferred;
   const candidates = ["python", "python3", "python3.11", "python3.10"];
-  return candidates[0]; // spawn will fail gracefully if not found
+  return candidates[0];
 }
 
 async function runPythonConverter(
@@ -31,7 +33,7 @@ async function runPythonConverter(
   return new Promise((resolve) => {
     const python = findPython();
     const proc = spawn(/*turbopackIgnore: true*/ python, [PYTHON_SCRIPT, inputPath, outputPath], {
-      timeout: 60_000, // 60 second max
+      timeout: 120_000, // 120 second max
     });
 
     let stdout = "";
@@ -41,7 +43,7 @@ async function runPythonConverter(
     proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
 
     proc.on("close", (code) => {
-      if (code === 0 && stdout.startsWith("OK:")) {
+      if (code === 0 && (stdout.trim().includes("OK:") || existsSync(outputPath))) {
         resolve({ success: true });
       } else {
         resolve({

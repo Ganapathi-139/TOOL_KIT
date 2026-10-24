@@ -6,6 +6,21 @@ Exits 0 on success, 1 on error. Writes ONLY errors to stderr.
 """
 import sys
 import os
+import warnings
+warnings.filterwarnings("ignore")
+
+# Suppress stderr warnings (such as PyMuPDF deprecation notices)
+class StderrFilter:
+    def __init__(self, original_stderr):
+        self.original_stderr = original_stderr
+    def write(self, s):
+        if "fitz" in s.lower() or "deprecated" in s.lower() or "pymupdf" in s.lower():
+            return
+        self.original_stderr.write(s)
+    def flush(self):
+        self.original_stderr.flush()
+
+sys.stderr = StderrFilter(sys.stderr)
 
 def main():
     if len(sys.argv) != 3:
@@ -20,9 +35,6 @@ def main():
         sys.exit(1)
 
     try:
-        import warnings
-        warnings.filterwarnings("ignore")
-
         # Suppress pdf2docx/pymupdf verbose logging
         import logging
         logging.disable(logging.CRITICAL)
