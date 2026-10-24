@@ -101,17 +101,23 @@ This guide walks through every major tool in the ToolKit repository. For each fe
 - **File**: `src/app/tools/pdf/word-to-pdf/page.tsx`
 - **Input**: A `.docx` Word file.
 - **Processing**:
-  1. Primary Engine: Integrates Gotenberg LibreOffice headless service (`process.env.GOTENBERG_URL`) for pixel-perfect PDF vector conversion.
-  2. Fallback Engine: Client-side `docx-preview` parses OpenXML directly into styled HTML elements inside a sandboxed container, with browser native print engine (`window.print()`).
-  3. Provides an interactive embedded PDF previewer before download.
-- **Output**: Direct print-to-PDF export and downloadable `.pdf` document.
+  1. Dynamically imports `docx-preview` to parse OpenXML format directly into styled HTML elements inside a sandboxed offscreen container.
+  2. Applies `sanitizeHtmlContent` to strip any unsafe script tags or inline handlers.
+  3. Collects all `docx-preview` CSS rules from active stylesheets and injects them into a print window.
+  4. Opens a browser print dialog via `window.print()` with A4/landscape page sizing and per-section page-break rules — each Word section maps to exactly one PDF page.
+- **Output**: Browser-native print-to-PDF export with faithful page layout, fonts, headers, and footers.
+- **Note**: For documents with complex nested tables or macros, running ToolKit locally enables the Python `pdf2docx` engine for higher fidelity.
 
 ### 12. PDF to Word
 - **Files**: `src/app/tools/pdf/to-word/page.tsx`, `src/app/api/convert/pdf-to-word/route.ts`, `scripts/pdf2docx_convert.py`
-- **Processing (Dual Engine)**:
-  - **Stage 1 (Server API)**: Calls local Python `pdf2docx` subprocess for native desktop-grade table and layout reconstruction.
-  - **Stage 2 (Browser Fallback)**: Extracts text runs with PDF.js, reconstructs fonts from binary `BaseFont` maps, groups lines using baseline clustering, tightens margins to 0.5 in, uses explicit page break runs (`<w:r><w:br w:type="page"/></w:r>`) to eliminate blank pages, and builds a valid `.docx` package using `jszip`.
+- **Processing (Browser Engine — Default)**:
+  - Loads PDF.js from CDN and extracts per-page text runs with font metadata (`BaseFont`, style properties).
+  - Reconstructs fonts from binary `BaseFont` maps embedded in the PDF binary stream.
+  - Groups text runs into lines using Y-axis baseline clustering (±3.5pt tolerance).
+  - Tightens margins to 0.5 in (720 dxa) and uses explicit OpenXML page break runs (`<w:r><w:br w:type="page"/></w:r>`) to eliminate blank pages.
+  - Builds a valid `.docx` OpenXML package using `jszip`.
   - **Live Preview**: Integrates interactive `docx-preview` reader with side-by-side comparison tabs toggling between the converted Word document and original PDF.
+- **Enhanced Local Engine**: When running ToolKit locally with Python 3.11+ installed, the `/api/convert/pdf-to-word` route can be enabled to leverage `pdf2docx` for full table and layout preservation.
 - **Output**: Editable Microsoft Word `.docx` file with real-time in-app viewer.
 
 ---

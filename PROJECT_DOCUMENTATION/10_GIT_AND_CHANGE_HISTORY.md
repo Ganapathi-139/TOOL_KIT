@@ -30,6 +30,7 @@ This document provides a chronological analysis of the ToolKit repository's evol
 | **`8e9b5d7`** | 2026-10-15 | `fix(security): resolve Cloudflare audit findings - SSRF protection...` | **Major Security Hardening**: Implemented Cloudflare Security Audit standard (SSRF blocking, constant-time HMAC, CSP, HSTS, XSS sanitization). |
 | **`f3a8b21`** | 2026-10-24 | `feat: high-fidelity docx-preview reader & margin optimization for PDF/Word` | Integrated interactive `docx-preview` document viewer, side-by-side original/converted comparison tabs, tightened margins to 0.5 in, and eliminated blank pages. |
 | **`e7b9c42`** | 2026-10-24 | `fix(qr): phone-ready domain routing for file share QR on localhost` | Automatically routes localhost QR links through public domain (`toolkit.sgscreations.in`) so phone cameras scan and download without connection errors, with 1-click domain switcher. |
+| **`a3d9f71`** | 2026-10-24 | `refactor: remove Gotenberg & server deps — pure client-side Word↔PDF conversions` | **Major Architectural Shift #4**: Removed all Gotenberg and server-side PDF conversion routes. Word-to-PDF and PDF-to-Word are now 100% in-browser using `docx-preview` + browser print and PDF.js + `jszip` respectively. Added pro-tip banners encouraging local ToolKit install or upcoming native app for complex layout fidelity. |
 
 ---
 

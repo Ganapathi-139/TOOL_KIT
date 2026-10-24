@@ -11,8 +11,8 @@ Designed with a **privacy-first, browser-native processing architecture**: tools
 ## ✨ Available Tools (39 Tools Across 6 Categories)
 
 ### 📄 PDF Document Suite (13 Tools)
-- **Word to PDF** (`/tools/pdf/word-to-pdf`): Parse Microsoft Word (.docx) files and export clean, formatted PDF documents with exact pagination, styles, and vector typography via Gotenberg LibreOffice engine with client-side browser print fallback and live PDF preview.
-- **PDF to Word (.docx)** (`/tools/pdf/to-word`): Dual-engine conversion featuring dedicated high-accuracy Python `pdf2docx` processing bridge alongside the browser-native fallback converter. Includes interactive `docx-preview` document reader, side-by-side original/converted comparison tabs, and optimized page flow without blank pages.
+- **Word to PDF** (`/tools/pdf/word-to-pdf`): Convert Microsoft Word (.docx) files to PDF entirely inside your browser using `docx-preview` for OpenXML rendering and the browser print engine. Includes interactive document preview before saving. No files are ever sent to any server.
+- **PDF to Word (.docx)** (`/tools/pdf/to-word`): 100% browser-native conversion using PDF.js text/font extraction and OpenXML packaging (`jszip`). Includes interactive `docx-preview` document reader, side-by-side original/converted comparison tabs, and clean page flow. Run ToolKit locally for enhanced table and layout fidelity with the `pdf2docx` engine.
 - **PDF to PowerPoint (.pptx)** (`/tools/pdf/to-ppt`): Convert PDF document pages into presentation-ready Microsoft PowerPoint slides using client-side OpenXML presentation generation.
 - **PowerPoint to PDF** (`/tools/pdf/ppt-to-pdf`): Convert PowerPoint presentations (.pptx) into paginated PDF documents directly in the browser.
 - **Merge PDF** (`/tools/pdf/merge`): Combine multiple PDF documents into a single file with custom drag-and-drop ordering and instant live PDF preview.
@@ -67,7 +67,7 @@ Designed with a **privacy-first, browser-native processing architecture**: tools
 
 ToolKit is built on a strict privacy model:
 
-1. **Privacy-First In-Browser Processing**: All 39 tools execute client-side on the user's machine using modern Web APIs (`FileReader`, `Canvas`, `Blob`, `WebCrypto`, `DOMParser`), `pdf-lib`, and `jszip` (with 100MB QR file transfers running zero-log, direct streaming without cloud persistence).
+1. **Privacy-First In-Browser Processing**: All 39 tools execute client-side on the user's machine using modern Web APIs (`FileReader`, `Canvas`, `Blob`, `WebCrypto`, `DOMParser`), `pdf-lib`, `docx-preview`, and `jszip`. Zero files are ever uploaded to remote servers.
 2. **Zero Server File Logging**: No files, text, images, or documents are ever retained or monetized on any server. Complete data confidentiality.
 3. **DOM XSS Sanitization**: User previewers (Markdown, text tools) escape HTML entities and strictly whitelist safe URL protocols (`http://`, `https://`, `mailto:`), preventing script injection.
 4. **HTTP Security Headers**: Configured with `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `X-XSS-Protection: 1; mode=block`, and strict Referrer policies.
@@ -126,19 +126,18 @@ npm start
 
 ## ⚙️ Environment Configuration
 
-ToolKit works out of the box with zero required configuration. To enable optional high-fidelity server rendering or custom public domains, create a `.env.local` file (see `.env.example`):
+ToolKit works out of the box with **zero required configuration** — all conversions run 100% inside the browser. The only optional settings are for advanced QR File Share behavior:
 
 ```bash
-# [Optional] Gotenberg LibreOffice endpoint for high-fidelity Word to PDF conversion
-GOTENBERG_URL=https://your-gotenberg.onrender.com
-
 # [Optional] Persistent 64-character hex secret for signing QR File Share tokens
+# across multi-instance deployments. Auto-generated if not set.
 FILE_SHARE_SECRET=your_persistent_64_character_hex_secret_here
 
-# [Optional] Canonical public site URL (defaults to https://toolkit.sgscreations.in)
-# Automatically utilized for mobile-scannable QR links generated during localhost development
+# [Optional] Canonical public site URL for mobile-scannable QR links (defaults to https://toolkit.sgscreations.in)
 NEXT_PUBLIC_SITE_URL=https://toolkit.sgscreations.in
 ```
+
+> **Running ToolKit Locally for Enhanced PDF Conversion?** Install Python 3.11+ with `pip install pdf2docx pdf-miner` and run `npm run dev`. PDF to Word conversion will automatically use the native `pdf2docx` engine for full table and layout fidelity.
 
 ---
 

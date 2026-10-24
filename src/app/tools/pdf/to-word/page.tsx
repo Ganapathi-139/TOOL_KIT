@@ -19,6 +19,7 @@ import {
   Eye,
   Layers,
   FileCheck,
+  Sparkles,
 } from "lucide-react";
 import * as docx from "docx-preview";
 import { Header } from "@/components/Header";
@@ -100,7 +101,6 @@ export default function PdfToWordPage() {
   const [docxSize, setDocxSize] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [engineUsed, setEngineUsed] = useState<"server" | "client" | null>(null);
   const [isImageBasedPdf, setIsImageBasedPdf] = useState(false);
 
   // Preview states
@@ -167,15 +167,11 @@ export default function PdfToWordPage() {
     setActivePreviewTab("docx");
     setStatus("");
     setErrorMessage(null);
-    setEngineUsed(null);
     setIsImageBasedPdf(false);
   };
 
   // ──────────────────────────────────────────────────────────
-  // Main conversion entry point
-  // Strategy:
-  //   1. Try /api/convert/pdf-to-word (Python pdf2docx — best quality)
-  //   2. On 503/network error → fall back to client-side extraction
+  // Main conversion entry point — 100% client-side browser engine
   // ──────────────────────────────────────────────────────────
   const convertPdfToWord = async () => {
     if (!file) return;
@@ -186,17 +182,7 @@ export default function PdfToWordPage() {
     setIsImageBasedPdf(false);
 
     try {
-      // ── Stage 1: Try the server-side Python engine ──
-      setStatus("Trying high-quality conversion engine…");
-      const serverBlob = await tryServerConversion(file);
-
-      if (serverBlob) {
-        // Server succeeded
-        finishWithBlob(serverBlob, "server");
-        return;
-      }
-
-      // ── Stage 2: Client-side fallback ──
+      // ── Client-side PDF.js extraction ──
       setStatus("Loading PDF engine…");
       await loadScript(
         "/js/pdf.min.js",
@@ -402,7 +388,7 @@ export default function PdfToWordPage() {
 
       setStatus("Building Word document (.docx)…");
       const docxBlob = await buildDocx(pages);
-      finishWithBlob(docxBlob, "client");
+      finishWithBlob(docxBlob);
 
     } catch (err: unknown) {
       console.error(err);
@@ -411,44 +397,14 @@ export default function PdfToWordPage() {
     }
   };
 
-  // ──────────────────────────────────────────────────────────
-  // Try server-side conversion (Python pdf2docx)
-  // Returns the DOCX blob if successful, null if not available
-  // ──────────────────────────────────────────────────────────
-  const tryServerConversion = async (f: File): Promise<Blob | null> => {
-    try {
-      const form = new FormData();
-      form.append("file", f);
-      const resp = await fetch("/api/convert/pdf-to-word", {
-        method: "POST",
-        body: form,
-        signal: AbortSignal.timeout(90_000),
-      });
-      if (resp.status === 503 || resp.status === 404) return null; // not available on this deployment
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        console.warn("[server conversion]", err.error || resp.statusText);
-        return null;
-      }
-      return await resp.blob();
-    } catch {
-      return null; // network error or timeout — fall back silently
-    }
-  };
-
-  const finishWithBlob = (blob: Blob, engine: "server" | "client") => {
+  const finishWithBlob = (blob: Blob) => {
     const url = URL.createObjectURL(blob);
     setDocxUrl(url);
     setDocxSize(blob.size);
     setConvertedDocxBlob(blob);
     setActivePreviewTab("docx");
     setDone(true);
-    setEngineUsed(engine);
-    setStatus(
-      engine === "server"
-        ? "Converted using high-quality engine (pdf2docx). Tables and layout preserved."
-        : "Converted using browser engine. Text and fonts extracted."
-    );
+    setStatus("Converted using browser engine. Text, headings, and fonts extracted.");
     setIsProcessing(false);
   };
 
@@ -639,7 +595,6 @@ export default function PdfToWordPage() {
     setDocxSize(null);
     setStatus("");
     setErrorMessage(null);
-    setEngineUsed(null);
     setIsImageBasedPdf(false);
   };
 
@@ -676,8 +631,35 @@ export default function PdfToWordPage() {
             className="font-body text-base sm:text-lg mt-2 max-w-2xl"
             style={{ color: "var(--text-secondary)" }}
           >
-            Convert PDF to editable Word (.docx) — uses a high-quality engine locally, with a browser fallback for cloud deployment.
+            Convert PDF documents to editable Word (.docx) files — entirely inside your browser. No files are ever sent to any server.
           </p>
+        </div>
+
+        {/* Pro Tip: Encourage local install for better quality */}
+        <div
+          className="mb-8 p-4 rounded-2xl border flex items-start gap-3.5"
+          style={{
+            backgroundColor: "rgba(217, 119, 6, 0.08)",
+            borderColor: "rgba(217, 119, 6, 0.25)",
+          }}
+        >
+          <div
+            className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5"
+            style={{
+              backgroundColor: "rgba(217, 119, 6, 0.15)",
+              color: "var(--amber-primary)",
+            }}
+          >
+            <Sparkles size={16} />
+          </div>
+          <div className="text-sm font-body flex-1">
+            <p className="font-semibold text-amber-700 dark:text-amber-400">
+              💡 Install ToolKit Locally for Higher-Fidelity Output
+            </p>
+            <p className="mt-1 text-xs sm:text-sm text-stone-700 dark:text-stone-300 leading-relaxed">
+              This in-browser converter extracts text, headings, and fonts from text-based PDFs. For documents with complex multi-column tables, charts, or forms, <strong>run ToolKit locally</strong> to enable the native Python <code className="px-1 py-0.5 rounded bg-black/5 dark:bg-white/10 font-mono text-xs">pdf2docx</code> engine — or look forward to our upcoming <strong>Desktop &amp; Mobile app</strong> for full layout preservation!
+            </p>
+          </div>
         </div>
 
         {errorMessage && (
@@ -837,21 +819,17 @@ export default function PdfToWordPage() {
                     </div>
 
                     {/* Engine badge */}
-                    {engineUsed && (
+                    {done && (
                       <div
                         className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-body"
                         style={{
-                          backgroundColor: engineUsed === "server" ? "rgba(34,197,94,0.07)" : "var(--amber-tint)",
-                          color: engineUsed === "server" ? "#15803d" : "var(--text-secondary)",
-                          border: `1px solid ${engineUsed === "server" ? "rgba(34,197,94,0.3)" : "rgba(200,123,58,0.2)"}`,
+                          backgroundColor: "var(--amber-tint)",
+                          color: "var(--text-secondary)",
+                          border: "1px solid rgba(200,123,58,0.2)",
                         }}
                       >
                         <Info size={13} />
-                        <span>
-                          {engineUsed === "server"
-                            ? "High-quality engine (pdf2docx): tables, layout, and fonts preserved."
-                            : "Browser engine: text and fonts extracted. Tables/images not supported."}
-                        </span>
+                        <span>Browser engine: text, headings, and fonts extracted. Scanned/image PDFs require OCR.</span>
                       </div>
                     )}
 
@@ -966,8 +944,8 @@ export default function PdfToWordPage() {
                 <Shield size={18} />
               </div>
               <p className="font-body text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                <strong className="font-semibold" style={{ color: "var(--text-primary)" }}>100% Private:</strong>{" "}
-                When using the browser engine, your files never leave your device. The server engine processes files temporarily and deletes them immediately after conversion.
+                <strong className="font-semibold" style={{ color: "var(--text-primary)" }}>100% Private In-Browser:</strong>{" "}
+                Your PDF files are processed entirely inside your web browser using PDF.js. No files are ever uploaded to any remote server or cloud service.
               </p>
             </div>
           </div>
@@ -980,11 +958,11 @@ export default function PdfToWordPage() {
               </h3>
               <ul className="space-y-2.5 text-xs font-body" style={{ color: "var(--text-secondary)" }}>
                 {[
-                  ["High-quality engine", "Used locally: preserves tables, fonts, layout (pdf2docx)"],
-                  ["Browser fallback", "Used on Vercel: extracts text, fonts, headings — no tables"],
+                  ["Text & fonts extracted", "Headings, bold, italic, and font sizes preserved"],
                   ["Page breaks preserved", "Each PDF page becomes a new section in the .docx"],
                   ["Editable output", "Open and edit in Word, LibreOffice, Google Docs"],
-                  ["Scanned PDFs", "Image-only PDFs require OCR — not supported without it"],
+                  ["Text-based PDFs only", "Scanned/image PDFs require OCR — not supported"],
+                  ["Better with local install", "Run ToolKit locally for full table & layout support"],
                 ].map(([title, desc]) => (
                   <li key={title} className="flex items-start gap-2">
                     <CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />
@@ -1024,7 +1002,7 @@ export default function PdfToWordPage() {
           </div>
         </div>
       </main>
-      <style jsx global>{`
+      <style>{`
         .docx-preview-output .docx-wrapper {
           background: transparent !important;
           padding: 8px 0 !important;
