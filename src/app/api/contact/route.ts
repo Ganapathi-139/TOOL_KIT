@@ -41,6 +41,9 @@ export async function POST(req: NextRequest) {
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        Referer: "https://toolkit.sgscreations.in/",
+        Origin: "https://toolkit.sgscreations.in",
+        "User-Agent": "Mozilla/5.0 (compatible; ToolKit/1.0; +https://toolkit.sgscreations.in)",
       },
       body: JSON.stringify({
         Name: safeName,
@@ -57,9 +60,10 @@ export async function POST(req: NextRequest) {
     const data = await formSubmitRes.json().catch(() => null);
 
     const isSuccess =
-      (formSubmitRes.ok && data?.success === "true") ||
-      (data?.message && data.message.toLowerCase().includes("activation")) ||
-      (data?.message && data.message.toLowerCase().includes("success"));
+      (formSubmitRes.ok && (data?.success === "true" || data?.success === true)) ||
+      (typeof data?.message === "string" &&
+        (data.message.toLowerCase().includes("activation") ||
+          data.message.toLowerCase().includes("success")));
 
     if (isSuccess) {
       return NextResponse.json({ success: true });

@@ -85,8 +85,19 @@ function ContactFormInner() {
       return;
     }
 
-    // If running on localhost, intercept and guide to live site with pre-filled message
-    if (isLocalhost) {
+    // Real-time host detection: if running on localhost / local network, intercept and guide to live site
+    const currentHost =
+      typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
+    const isLocal =
+      currentHost === "localhost" ||
+      currentHost === "127.0.0.1" ||
+      currentHost === "[::1]" ||
+      currentHost.endsWith(".local") ||
+      currentHost.startsWith("192.168.") ||
+      currentHost.startsWith("10.") ||
+      currentHost.startsWith("172.");
+
+    if (isLocal) {
       setStatus("localhost");
       return;
     }
