@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
 
     const { name, email, subject, message, _honey } = body;
 
-    // Honeypot check: silently accept bot submissions to waste spammer resources
+    // Honeypot check: silently accept bot submissions
     if (_honey && String(_honey).trim().length > 0) {
       return NextResponse.json({ success: true });
     }
@@ -30,8 +30,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Your message must be at least 10 characters." }, { status: 400 });
     }
 
-    // Server-to-server forward (bypasses all browser ad-blockers, shields, and CORS restrictions)
-    const targetEmail = process.env.CONTACT_EMAIL || "contact@sgscreations.in";
+    // Target email (defaults to sgs.creations03@gmail.com, configurable via CONTACT_EMAIL env)
+    const targetEmail = process.env.CONTACT_EMAIL || "sgs.creations03@gmail.com";
     const endpoint =
       process.env.FORMSUBMIT_ENDPOINT ||
       `https://formsubmit.co/ajax/${targetEmail}`;
@@ -59,8 +59,11 @@ export async function POST(req: NextRequest) {
 
     const data = await formSubmitRes.json().catch(() => null);
 
+    // Check success: accept 200, success flag, or activation message
     const isSuccess =
-      (formSubmitRes.ok && (data?.success === "true" || data?.success === true)) ||
+      formSubmitRes.ok ||
+      data?.success === "true" ||
+      data?.success === true ||
       (typeof data?.message === "string" &&
         (data.message.toLowerCase().includes("activation") ||
           data.message.toLowerCase().includes("success")));
