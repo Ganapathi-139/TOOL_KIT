@@ -18,6 +18,8 @@ import {
   CheckCircle2,
   FileText,
   RotateCw,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -42,6 +44,7 @@ export default function ImageToPdfPage() {
   const [isConverting, setIsConverting] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfSize, setPdfSize] = useState<number | null>(null);
+  const [showPreview, setShowPreview] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -554,43 +557,87 @@ export default function ImageToPdfPage() {
               </div>
             )}
 
-            {/* Result Download Card */}
+            {/* Result Download Card & Interactive Preview */}
             {pdfUrl && (
-              <div
-                className="p-6 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-4"
-                style={{
-                  backgroundColor: "var(--surface)",
-                  borderColor: "rgba(34, 197, 94, 0.3)",
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center bg-green-500/10 text-green-500 shrink-0">
-                    <CheckCircle2 size={22} />
+              <div className="space-y-4">
+                <div
+                  className="p-6 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-4"
+                  style={{
+                    backgroundColor: "var(--surface)",
+                    borderColor: "rgba(34, 197, 94, 0.3)",
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-green-500/10 text-green-500 shrink-0">
+                      <CheckCircle2 size={22} />
+                    </div>
+                    <div>
+                      <h4 className="font-headline font-semibold text-base" style={{ color: "var(--text-primary)" }}>
+                        Your PDF is ready!
+                      </h4>
+                      <p className="font-body text-xs" style={{ color: "var(--text-secondary)" }}>
+                        {images.length} pages generated · {pdfSize ? formatFileSize(pdfSize) : ""}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-headline font-semibold text-base" style={{ color: "var(--text-primary)" }}>
-                      Your PDF is ready!
-                    </h4>
-                    <p className="font-body text-xs" style={{ color: "var(--text-secondary)" }}>
-                      {images.length} pages generated · {pdfSize ? formatFileSize(pdfSize) : ""}
-                    </p>
+
+                  <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => setShowPreview((prev) => !prev)}
+                      className="flex-1 sm:flex-none px-4 py-2.5 rounded-lg border font-body text-sm font-semibold flex items-center justify-center gap-2 transition-all"
+                      style={{
+                        backgroundColor: "var(--surface)",
+                        borderColor: "var(--border-warm)",
+                        color: "var(--text-primary)",
+                      }}
+                      title={showPreview ? "Hide Preview" : "Show Preview"}
+                    >
+                      {showPreview ? <EyeOff size={16} /> : <Eye size={16} />}
+                      <span>{showPreview ? "Hide Preview" : "Preview PDF"}</span>
+                    </button>
+                    <a
+                      href={pdfUrl}
+                      download="converted-images.pdf"
+                      className="flex-1 sm:flex-none px-6 py-2.5 rounded-lg font-body text-sm font-semibold flex items-center justify-center gap-2 transition-all shadow-sm"
+                      style={{
+                        backgroundColor: "var(--amber-primary)",
+                        color: "#FFFFFF",
+                      }}
+                    >
+                      <Download size={16} />
+                      Download PDF
+                    </a>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 w-full sm:w-auto">
-                  <a
-                    href={pdfUrl}
-                    download="converted-images.pdf"
-                    className="flex-1 sm:flex-none px-6 py-2.5 rounded-lg font-body text-sm font-semibold flex items-center justify-center gap-2 transition-all"
+                {showPreview && (
+                  <div
+                    className="p-4 rounded-xl border space-y-3"
                     style={{
-                      backgroundColor: "var(--amber-primary)",
-                      color: "#FFFFFF",
+                      backgroundColor: "var(--surface)",
+                      borderColor: "var(--border-warm)",
                     }}
                   >
-                    <Download size={16} />
-                    Download PDF
-                  </a>
-                </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 font-headline font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
+                        <Eye size={16} style={{ color: "var(--amber-primary)" }} />
+                        <span>Interactive PDF Preview</span>
+                      </div>
+                      <span className="font-body text-xs" style={{ color: "var(--text-secondary)" }}>
+                        {images.length} Page{images.length > 1 ? "s" : ""}
+                      </span>
+                    </div>
+
+                    <div className="rounded-lg overflow-hidden border" style={{ borderColor: "var(--border-warm)" }}>
+                      <iframe
+                        src={pdfUrl}
+                        title="Converted PDF Preview"
+                        className="w-full h-[540px] bg-neutral-900 border-0"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

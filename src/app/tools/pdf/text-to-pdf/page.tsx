@@ -13,6 +13,8 @@ import {
   AlertTriangle,
   FileType2,
   FilePlus2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -37,6 +39,7 @@ export default function TextToPdfPage() {
   const [pdfSize, setPdfSize] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState<number>(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Clean up object URLs on unmount
@@ -484,38 +487,69 @@ export default function TextToPdfPage() {
                 )}
               </button>
 
-              {/* Download Section */}
+              {/* Download Section & Interactive Preview */}
               {pdfBlobUrl && (
-                <div
-                  className="p-5 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-4"
-                  style={{
-                    backgroundColor: "var(--surface-tinted)",
-                    borderColor: "var(--border-warm)",
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-emerald-500 bg-emerald-500/10">
-                      <CheckCircle2 size={24} />
+                <div className="flex flex-col gap-4">
+                  <div
+                    className="p-5 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-4"
+                    style={{
+                      backgroundColor: "var(--surface-tinted)",
+                      borderColor: "var(--border-warm)",
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-emerald-500 bg-emerald-500/10">
+                        <CheckCircle2 size={24} />
+                      </div>
+                      <div>
+                        <p className="font-headline font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
+                          PDF Generated Successfully!
+                        </p>
+                        <p className="font-body text-xs" style={{ color: "var(--text-muted)" }}>
+                          {pageCount} {pageCount === 1 ? "page" : "pages"} • {pdfSize ? formatFileSize(pdfSize) : ""}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-headline font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
-                        PDF Ready
-                      </p>
-                      <p className="font-body text-xs" style={{ color: "var(--text-muted)" }}>
-                        {pageCount} {pageCount === 1 ? "page" : "pages"} • {pdfSize ? formatFileSize(pdfSize) : ""}
-                      </p>
+
+                    <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => setShowPreview(!showPreview)}
+                        className="flex-1 sm:flex-none px-4 py-2.5 rounded-lg border font-body text-xs font-medium flex items-center justify-center gap-1.5 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                        style={{
+                          borderColor: "var(--border-warm)",
+                          color: "var(--text-secondary)",
+                          backgroundColor: showPreview ? "var(--amber-tint)" : "transparent",
+                        }}
+                      >
+                        {showPreview ? <EyeOff size={14} /> : <Eye size={14} />}
+                        <span>{showPreview ? "Hide Preview" : "Preview PDF"}</span>
+                      </button>
+
+                      <a
+                        href={pdfBlobUrl}
+                        download={`${fileName || "document"}.pdf`}
+                        className="flex-1 sm:flex-none px-5 py-2.5 rounded-lg font-body font-semibold text-xs text-white flex items-center justify-center gap-2 transition-transform hover:scale-105 shadow-sm"
+                        style={{ backgroundColor: "var(--amber-primary)" }}
+                      >
+                        <Download size={15} />
+                        <span>Download PDF</span>
+                      </a>
                     </div>
                   </div>
 
-                  <a
-                    href={pdfBlobUrl}
-                    download={`${fileName || "document"}.pdf`}
-                    className="w-full sm:w-auto px-5 py-2.5 rounded-lg font-body font-semibold text-xs text-white flex items-center justify-center gap-2 transition-transform hover:scale-105"
-                    style={{ backgroundColor: "var(--amber-primary)" }}
-                  >
-                    <Download size={15} />
-                    <span>Download PDF</span>
-                  </a>
+                  {showPreview && (
+                    <div
+                      className="border rounded-xl overflow-hidden"
+                      style={{ borderColor: "var(--border-warm)", height: "540px" }}
+                    >
+                      <iframe
+                        src={pdfBlobUrl}
+                        title="Generated PDF Preview"
+                        className="w-full h-full border-0"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
