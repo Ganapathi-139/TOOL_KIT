@@ -93,6 +93,32 @@ export default function PptToPdfPage() {
     setIsConverting(true);
     setErrorMessage(null);
     setSlideThumbnails([]);
+    setConversionStatus("Converting presentation...");
+
+    // 1. Try local native converter if running on local development server
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/convert/ppt-to-pdf", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (res.ok) {
+        const blob = await res.blob();
+        if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+        const url = URL.createObjectURL(blob);
+        blobUrlRef.current = url;
+        setPdfBlobUrl(url);
+        setPdfFileSize(blob.size);
+        setConversionStatus("");
+        setIsConverting(false);
+        return;
+      }
+    } catch {
+      // Fallback silently to client-side engine (e.g. Vercel deployment)
+    }
+
     setConversionStatus("Opening presentation package...");
 
     try {
@@ -407,6 +433,14 @@ export default function PptToPdfPage() {
                 };
               }
               ctx.drawImage(img, xfrm.x, xfrm.y, xfrm.w, xfrm.h);
+
+              // Register picture region to prevent text boxes from overlapping images/banners
+              occupiedRegions.push({
+                x: xfrm.x,
+                y: xfrm.y,
+                w: xfrm.w,
+                h: xfrm.h,
+              });
             }
             return;
           }
@@ -447,13 +481,17 @@ export default function PptToPdfPage() {
               const paragraphs = Array.from(txBody.getElementsByTagName("a:p"));
               let currentY = xfrm.y + 24;
 
-              // Check for collision with previously rendered shapes at similar position
+              // Check for collision with previously rendered shapes/pictures (AABB overlap)
               for (const prev of occupiedRegions) {
+                const xOverlap =
+                  Math.max(xfrm.x, prev.x) <
+                  Math.min(xfrm.x + safeWrapWidth, prev.x + prev.w);
                 if (
-                  Math.abs(currentY - prev.y) < 32 &&
-                  Math.abs(xfrm.x - prev.x) < 400
+                  xOverlap &&
+                  currentY >= prev.y - 12 &&
+                  currentY < prev.y + prev.h + 12
                 ) {
-                  currentY = prev.y + prev.h + 16;
+                  currentY = prev.y + prev.h + 20;
                 }
               }
 

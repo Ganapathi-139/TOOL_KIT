@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   Upload,
@@ -45,9 +45,18 @@ export default function WordToPdfPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [pageCount, setPageCount] = useState(0);
   const [docPageSize, setDocPageSize] = useState<{ isLandscape: boolean }>({ isLandscape: false });
+  const [nativePdfBlobUrl, setNativePdfBlobUrl] = useState<string | null>(null);
+  const [usedNative, setUsedNative] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  const nativeBlobRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (nativeBlobRef.current) URL.revokeObjectURL(nativeBlobRef.current);
+    };
+  }, []);
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + " B";
@@ -61,6 +70,12 @@ export default function WordToPdfPage() {
     setRenderedHtml("");
     setPageCount(0);
     setConversionStatus("");
+    setUsedNative(false);
+    if (nativeBlobRef.current) {
+      URL.revokeObjectURL(nativeBlobRef.current);
+      nativeBlobRef.current = null;
+    }
+    setNativePdfBlobUrl(null);
 
     const name = selected.name.toLowerCase();
     if (!name.endsWith(".docx") && !name.endsWith(".doc")) {
@@ -76,13 +91,44 @@ export default function WordToPdfPage() {
 
     setFile(selected);
     setIsProcessing(true);
-    setConversionStatus("Reading Word document in-browser...");
+    setConversionStatus("Trying native Word-to-PDF engine...");
 
+    // --- Step 1: Attempt native API route (Microsoft Word COM on Windows) ---
+    try {
+      const formData = new FormData();
+      formData.append("file", selected);
+      const resp = await fetch("/api/convert/word-to-pdf", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        nativeBlobRef.current = blobUrl;
+        setNativePdfBlobUrl(blobUrl);
+        setUsedNative(true);
+        setHasRenderedDoc(true);
+        setConversionStatus("✅ PDF ready! Native Microsoft Word rendering used.");
+        setIsProcessing(false);
+        // Auto-trigger download
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = selected.name.replace(/\.[^/.]+$/, ".pdf");
+        a.click();
+        return;
+      }
+      // 503 = native not available on this machine → fall through to browser
+    } catch {
+      // network / fetch error → fall through to browser rendering
+    }
+
+    // --- Step 2: Browser-side fallback using docx-preview ---
+    setConversionStatus("Reading Word document in-browser...");
     try {
       const buffer = await selected.arrayBuffer();
       setConversionStatus("Rendering document layout & typography...");
 
-      // Render via docx-preview client module
       const docxModule = await import("docx-preview");
       const tempDiv = document.createElement("div");
       tempDiv.style.cssText =
@@ -266,6 +312,12 @@ export default function WordToPdfPage() {
   };
 
   const resetTool = () => {
+    if (nativeBlobRef.current) {
+      URL.revokeObjectURL(nativeBlobRef.current);
+      nativeBlobRef.current = null;
+    }
+    setNativePdfBlobUrl(null);
+    setUsedNative(false);
     setFile(null);
     setHasRenderedDoc(false);
     setRenderedHtml("");
@@ -328,7 +380,7 @@ export default function WordToPdfPage() {
           </div>
           <div className="text-sm font-body flex-1">
             <p className="font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
-              <span>💡 Install ToolKit Locally for Enhanced Output</span>
+              <span>💡 Native Word-to-PDF on Local Install</span>
             </p>
             <p className="mt-1 text-xs sm:text-sm text-stone-700 dark:text-stone-300 leading-relaxed">
               This in-browser converter runs 100% client-side with zero server dependencies. For advanced documents with complex multi-column forms, nested tables, or macros, <strong>run ToolKit locally</strong> or look forward to our upcoming cross-platform <strong>Desktop & Mobile app</strong> for 100% native layout fidelity!
@@ -516,15 +568,37 @@ export default function WordToPdfPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={downloadPdf}
-                        className="flex items-center gap-2 px-6 py-3 rounded-xl font-body font-semibold text-sm text-white shadow-sm transition-transform hover:scale-105"
-                        style={{ backgroundColor: "var(--amber-primary)" }}
-                      >
-                        <Printer size={16} />
-                        <span>Save as PDF (Print Preview)</span>
-                      </button>
+                      {usedNative && nativePdfBlobUrl ? (
+                        <>
+                          <a
+                            href={nativePdfBlobUrl}
+                            download={file?.name.replace(/\.[^/.]+$/, ".pdf") ?? "document.pdf"}
+                            className="flex items-center gap-2 px-6 py-3 rounded-xl font-body font-semibold text-sm text-white shadow-sm transition-transform hover:scale-105"
+                            style={{ backgroundColor: "var(--amber-primary)" }}
+                          >
+                            <Download size={16} />
+                            <span>Download PDF</span>
+                          </a>
+                          <p className="font-body text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                            ✅ Converted using native Microsoft Word engine — perfect layout fidelity!
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={downloadPdf}
+                            className="flex items-center gap-2 px-6 py-3 rounded-xl font-body font-semibold text-sm text-white shadow-sm transition-transform hover:scale-105"
+                            style={{ backgroundColor: "var(--amber-primary)" }}
+                          >
+                            <Printer size={16} />
+                            <span>Save as PDF (Print Preview)</span>
+                          </button>
+                          <p className="font-body text-xs text-stone-500 leading-relaxed">
+                            💡 <em>Tip:</em> In the print dialog, select <strong>&quot;Destination: Save as PDF&quot;</strong> to export a clean vector PDF document.
+                          </p>
+                        </>
+                      )}
 
                       <button
                         type="button"
@@ -538,10 +612,6 @@ export default function WordToPdfPage() {
                         <span>Convert Another File</span>
                       </button>
                     </div>
-
-                    <p className="font-body text-xs text-stone-500 leading-relaxed">
-                      💡 <em>Tip:</em> In the print dialog, select <strong>&quot;Destination: Save as PDF&quot;</strong> to export a clean vector PDF document.
-                    </p>
 
                     {/* Interactive document preview */}
                     <div className="mt-4 pt-4 border-t" style={{ borderColor: "var(--border-warm)" }}>
