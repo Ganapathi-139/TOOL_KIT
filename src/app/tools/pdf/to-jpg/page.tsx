@@ -40,20 +40,66 @@ export default function PdfToJpgPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Dynamically load PDF.js client-side script
     if (typeof window !== "undefined" && !window.pdfjsLib) {
-      const script = document.createElement("script");
-      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-      script.async = true;
-      script.onload = () => {
-        if (window.pdfjsLib) {
-          window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-        }
-      };
-      document.body.appendChild(script);
+       const script = document.createElement("script");
+       script.src = "/js/pdf.min.js";
+       script.async = true;
+       script.onload = () => {
+         if (window.pdfjsLib) {
+           window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/js/pdf.worker.min.js";
+         }
+       };
+       script.onerror = () => {
+         const cdn = document.createElement("script");
+         cdn.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+         cdn.onload = () => {
+           if (window.pdfjsLib) {
+             window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+               "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+           }
+         };
+         document.body.appendChild(cdn);
+       };
+       document.body.appendChild(script);
     }
   }, []);
+
+  const ensurePdfEngine = (): Promise<any> => {
+    if (typeof window === "undefined") return Promise.resolve(null);
+    if ((window as any).pdfjsLib) {
+      const lib = (window as any).pdfjsLib;
+      if (lib.GlobalWorkerOptions && !lib.GlobalWorkerOptions.workerSrc) {
+        lib.GlobalWorkerOptions.workerSrc = "/js/pdf.worker.min.js";
+      }
+      return Promise.resolve(lib);
+    }
+    return new Promise((resolve) => {
+      const s = document.createElement("script");
+      s.src = "/js/pdf.min.js";
+      s.onload = () => {
+        const lib = (window as any).pdfjsLib;
+        if (lib?.GlobalWorkerOptions) {
+          lib.GlobalWorkerOptions.workerSrc = "/js/pdf.worker.min.js";
+        }
+        resolve(lib);
+      };
+      s.onerror = () => {
+        const c = document.createElement("script");
+        c.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+        c.onload = () => {
+          const lib = (window as any).pdfjsLib;
+          if (lib?.GlobalWorkerOptions) {
+            lib.GlobalWorkerOptions.workerSrc =
+              "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+          }
+          resolve(lib);
+        };
+        c.onerror = () => resolve(null);
+        document.body.appendChild(c);
+      };
+      document.body.appendChild(s);
+    });
+  };
 
   const handleFile = (selected: File) => {
     setErrorMessage(null);
@@ -74,17 +120,14 @@ export default function PdfToJpgPage() {
     setErrorMessage(null);
 
     try {
-      if (!window.pdfjsLib) {
-        // Wait up to 3 seconds for script load if not ready
-        await new Promise((res) => setTimeout(res, 2000));
-        if (!window.pdfjsLib) {
-          throw new Error("PDF renderer library is still loading. Please check your internet connection and try again.");
-        }
+      const pdfLib = await ensurePdfEngine();
+      if (!pdfLib) {
+        throw new Error("PDF renderer library could not be loaded. Please refresh the page and try again.");
       }
 
       const buffer = await file.arrayBuffer();
       const uint8 = new Uint8Array(buffer);
-      const loadingTask = window.pdfjsLib.getDocument({ data: uint8 });
+      const loadingTask = pdfLib.getDocument({ data: uint8 });
       const pdf = await loadingTask.promise;
 
       const renderedPages: PageImage[] = [];

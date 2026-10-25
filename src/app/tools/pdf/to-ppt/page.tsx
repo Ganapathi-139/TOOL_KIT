@@ -47,18 +47,64 @@ export default function PdfToPptPage() {
   useEffect(() => {
     if (typeof window !== "undefined" && !window.pdfjsLib) {
       const script = document.createElement("script");
-      script.src =
-        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      script.src = "/js/pdf.min.js";
       script.async = true;
       script.onload = () => {
         if (window.pdfjsLib) {
-          window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/js/pdf.worker.min.js";
         }
+      };
+      script.onerror = () => {
+        const cdn = document.createElement("script");
+        cdn.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+        cdn.onload = () => {
+          if (window.pdfjsLib) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+              "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+          }
+        };
+        document.body.appendChild(cdn);
       };
       document.body.appendChild(script);
     }
   }, []);
+
+  const ensurePdfEngine = (): Promise<any> => {
+    if (typeof window === "undefined") return Promise.resolve(null);
+    if ((window as any).pdfjsLib) {
+      const lib = (window as any).pdfjsLib;
+      if (lib.GlobalWorkerOptions && !lib.GlobalWorkerOptions.workerSrc) {
+        lib.GlobalWorkerOptions.workerSrc = "/js/pdf.worker.min.js";
+      }
+      return Promise.resolve(lib);
+    }
+    return new Promise((resolve) => {
+      const s = document.createElement("script");
+      s.src = "/js/pdf.min.js";
+      s.onload = () => {
+        const lib = (window as any).pdfjsLib;
+        if (lib?.GlobalWorkerOptions) {
+          lib.GlobalWorkerOptions.workerSrc = "/js/pdf.worker.min.js";
+        }
+        resolve(lib);
+      };
+      s.onerror = () => {
+        const c = document.createElement("script");
+        c.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+        c.onload = () => {
+          const lib = (window as any).pdfjsLib;
+          if (lib?.GlobalWorkerOptions) {
+            lib.GlobalWorkerOptions.workerSrc =
+              "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+          }
+          resolve(lib);
+        };
+        c.onerror = () => resolve(null);
+        document.body.appendChild(c);
+      };
+      document.body.appendChild(s);
+    });
+  };
 
   useEffect(() => {
     return () => {
@@ -106,14 +152,15 @@ export default function PdfToPptPage() {
     setConversionStatus("Initializing PDF rendering engine...");
 
     try {
-      if (!window.pdfjsLib) {
+      const pdfjs = await ensurePdfEngine();
+      if (!pdfjs) {
         throw new Error(
-          "PDF engine is loading. Please wait a moment and try again."
+          "PDF rendering engine could not be loaded. Please refresh the page and try again."
         );
       }
 
       const arrayBuffer = await file.arrayBuffer();
-      const pdf = await window.pdfjsLib.getDocument({
+      const pdf = await pdfjs.getDocument({
         data: new Uint8Array(arrayBuffer),
       }).promise;
       const numPages = pdf.numPages;
@@ -157,9 +204,30 @@ export default function PdfToPptPage() {
       const pptRelsFolder = pptFolder?.folder("_rels");
       const slidesFolder = pptFolder?.folder("slides");
       const mediaFolder = pptFolder?.folder("media");
+      const mastersFolder = pptFolder?.folder("slideMasters");
+      const layoutsFolder = pptFolder?.folder("slideLayouts");
 
-      let contentTypesOverrides = "";
-      let presentationRels = "";
+      // Slide Master & Layout for 100% PowerPoint compatibility
+      mastersFolder?.file(
+        "slideMaster1.xml",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">\n  <p:cSld>\n    <p:spTree>\n      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>\n      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>\n    </p:spTree>\n  </p:cSld>\n  <p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>\n  <p:sldLayoutIdLst>\n    <p:sldLayoutId id="2147483649" r:id="rId1"/>\n  </p:sldLayoutIdLst>\n</p:sldMaster>`
+      );
+      mastersFolder?.folder("_rels")?.file(
+        "slideMaster1.xml.rels",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>\n</Relationships>`
+      );
+
+      layoutsFolder?.file(
+        "slideLayout1.xml",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1">\n  <p:cSld>\n    <p:spTree>\n      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>\n      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>\n    </p:spTree>\n  </p:cSld>\n  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>\n</p:sldLayout>`
+      );
+      layoutsFolder?.folder("_rels")?.file(
+        "slideLayout1.xml.rels",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>\n</Relationships>`
+      );
+
+      let contentTypesOverrides = `  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>\n  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>\n`;
+      let presentationRels = `  <Relationship Id="rIdMaster1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>\n`;
       let sldIdLst = "";
 
       const previews: SlidePreview[] = [];
@@ -189,7 +257,7 @@ export default function PdfToPptPage() {
           height: viewport.height,
         });
 
-        const rId = `rId${pageNum}`;
+        const rId = `rId${pageNum + 1}`;
         const sldId = 255 + pageNum;
 
         contentTypesOverrides += `  <Override PartName="/ppt/slides/slide${pageNum}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>\n`;
@@ -203,7 +271,7 @@ export default function PdfToPptPage() {
         const slideRelsFolder = slidesFolder?.folder("_rels");
         slideRelsFolder?.file(
           `slide${pageNum}.xml.rels`,
-          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image${pageNum}.png"/>\n</Relationships>`
+          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image${pageNum}.png"/>\n  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>\n</Relationships>`
         );
       }
 
@@ -217,7 +285,7 @@ export default function PdfToPptPage() {
 
       pptFolder?.file(
         "presentation.xml",
-        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">\n  <p:sldIdLst>\n${sldIdLst}  </p:sldIdLst>\n  <p:sldSz cx="${emuWidth}" cy="${emuHeight}"/>\n  <p:notesSz cx="6858000" cy="9144000"/>\n</p:presentation>`
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">\n  <p:sldMasterIdLst>\n    <p:sldMasterId id="2147483648" r:id="rIdMaster1"/>\n  </p:sldMasterIdLst>\n  <p:sldIdLst>\n${sldIdLst}  </p:sldIdLst>\n  <p:sldSz cx="${emuWidth}" cy="${emuHeight}"/>\n  <p:notesSz cx="6858000" cy="9144000"/>\n</p:presentation>`
       );
 
       pptRelsFolder?.file(

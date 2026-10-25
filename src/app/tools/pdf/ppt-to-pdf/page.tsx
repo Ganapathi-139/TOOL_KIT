@@ -99,10 +99,20 @@ export default function PptToPdfPage() {
       const buffer = await file.arrayBuffer();
       const zip = await JSZip.loadAsync(buffer);
 
+      // Helper for slash-normalized, case-insensitive zip file lookup
+      const findZipEntry = (pathStr: string) => {
+        const norm = pathStr.replace(/\\/g, "/").toLowerCase().trim();
+        const key = Object.keys(zip.files).find(
+          (k) => k.replace(/\\/g, "/").toLowerCase().trim() === norm
+        );
+        return key ? zip.files[key] : null;
+      };
+
       // Find all slide files: ppt/slides/slide{N}.xml
-      const slideFileNames = Object.keys(zip.files).filter((key) =>
-        /^ppt\/slides\/slide\d+\.xml$/i.test(key)
-      );
+      const slideFileNames = Object.keys(zip.files).filter((key) => {
+        const norm = key.replace(/\\/g, "/");
+        return /^ppt\/slides\/slide\d+\.xml$/i.test(norm);
+      });
 
       if (slideFileNames.length === 0) {
         throw new Error(
@@ -125,8 +135,9 @@ export default function PptToPdfPage() {
       // Detect presentation slide dimensions (EMUs)
       let slideWidthEmu = 12192000;
       let slideHeightEmu = 6858000;
-      if (zip.files["ppt/presentation.xml"]) {
-        const presXml = await zip.files["ppt/presentation.xml"].async("text");
+      const presEntry = findZipEntry("ppt/presentation.xml");
+      if (presEntry) {
+        const presXml = await presEntry.async("text");
         const presDoc = parser.parseFromString(presXml, "text/xml");
         const sldSz = presDoc.getElementsByTagName("p:sldSz")[0];
         if (sldSz) {
@@ -139,7 +150,7 @@ export default function PptToPdfPage() {
         }
       }
 
-      // Render canvas resolution (Crisp Full HD width)
+      // Render canvas resolution (Crisp Full HD width: 1920px)
       const canvasWidth = 1920;
       const canvasHeight = Math.round(
         canvasWidth * (slideHeightEmu / slideWidthEmu)
@@ -147,23 +158,45 @@ export default function PptToPdfPage() {
       const scaleX = canvasWidth / slideWidthEmu;
       const scaleY = canvasHeight / slideHeightEmu;
 
+      // Index all media files across the entire presentation package
+      setConversionStatus("Loading presentation media assets...");
+      const globalMediaMap = new Map<string, string>(); // basename -> dataUrl
+      for (const key of Object.keys(zip.files)) {
+        const norm = key.replace(/\\/g, "/");
+        if (norm.toLowerCase().includes("ppt/media/")) {
+          const base = norm.split("/").pop()?.toLowerCase();
+          if (base) {
+            const ext = base.endsWith(".png")
+              ? "png"
+              : base.endsWith(".webp")
+              ? "webp"
+              : "jpeg";
+            const b64 = await zip.files[key].async("base64");
+            globalMediaMap.set(base, `data:image/${ext};base64,${b64}`);
+          }
+        }
+      }
+
       const generatedThumbnails: SlideThumbnail[] = [];
 
       for (let i = 0; i < totalSlides; i++) {
         const slidePath = slideFileNames[i];
         setConversionStatus(`Rendering slide ${i + 1} of ${totalSlides}...`);
 
-        const slideXmlStr = await zip.files[slidePath].async("text");
+        const slideEntry = findZipEntry(slidePath);
+        if (!slideEntry) continue;
+        const slideXmlStr = await slideEntry.async("text");
         const slideDoc = parser.parseFromString(slideXmlStr, "text/xml");
 
-        // Parse slide relationships to locate embedded images
-        const slideNumMatch = slidePath.match(/slide(\d+)\.xml/i);
+        // Parse slide relationships to locate embedded pictures and diagrams
+        const slideNumMatch = slidePath.replace(/\\/g, "/").match(/slide(\d+)\.xml/i);
         const slideNum = slideNumMatch ? slideNumMatch[1] : `${i + 1}`;
         const relsPath = `ppt/slides/_rels/slide${slideNum}.xml.rels`;
-        const relMap = new Map<string, string>();
+        const relMap = new Map<string, string>(); // rId -> dataUrl
 
-        if (zip.files[relsPath]) {
-          const relsStr = await zip.files[relsPath].async("text");
+        const relsEntry = findZipEntry(relsPath);
+        if (relsEntry) {
+          const relsStr = await relsEntry.async("text");
           const relsDoc = parser.parseFromString(relsStr, "text/xml");
           const relNodes = Array.from(
             relsDoc.getElementsByTagName("Relationship")
@@ -171,26 +204,31 @@ export default function PptToPdfPage() {
 
           for (const r of relNodes) {
             const id = r.getAttribute("Id");
-            let target = r.getAttribute("Target") || "";
+            const target = r.getAttribute("Target") || "";
             if (id && target) {
-              if (target.startsWith("../")) {
-                target = "ppt/" + target.replace(/^\.\.\//, "");
-              } else if (!target.startsWith("ppt/")) {
-                target = "ppt/slides/" + target;
-              }
-
-              if (zip.files[target]) {
-                const ext = target.toLowerCase().endsWith(".png")
-                  ? "png"
-                  : "jpeg";
-                const base64 = await zip.files[target].async("base64");
-                relMap.set(id, `data:image/${ext};base64,${base64}`);
+              const base = target.split("/").pop()?.split("\\").pop()?.toLowerCase();
+              if (base && globalMediaMap.has(base)) {
+                relMap.set(id, globalMediaMap.get(base)!);
+              } else {
+                // Try resolving path directly
+                let cleanTarget = target.replace(/^\.\.\//, "");
+                if (!cleanTarget.startsWith("ppt/")) {
+                  cleanTarget = "ppt/" + cleanTarget;
+                }
+                const directFile = findZipEntry(cleanTarget);
+                if (directFile) {
+                  const ext = cleanTarget.toLowerCase().endsWith(".png")
+                    ? "png"
+                    : "jpeg";
+                  const b64 = await directFile.async("base64");
+                  relMap.set(id, `data:image/${ext};base64,${b64}`);
+                }
               }
             }
           }
         }
 
-        // Preload all images referenced by this slide
+        // Preload all image assets used on this slide
         const loadedImages = new Map<string, HTMLImageElement>();
         for (const [id, dataUrl] of relMap.entries()) {
           const img = new Image();
@@ -221,41 +259,68 @@ export default function PptToPdfPage() {
         ctx.fillStyle = bgColor;
         ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-        // Helper to extract transform coordinates
+        // Helper to extract transform coordinates specifically from <a:xfrm>
         const getTransform = (
-          node: Element
+          node: Element,
+          parentGroup?: { x: number; y: number; scaleX: number; scaleY: number }
         ): { x: number; y: number; w: number; h: number } | null => {
-          const off = node.getElementsByTagName("a:off")[0];
-          const ext = node.getElementsByTagName("a:ext")[0];
+          const spPr = node.getElementsByTagName("p:spPr")[0] ||
+                       node.getElementsByTagName("p:grpSpPr")[0] ||
+                       node;
+          const xfrm = spPr.getElementsByTagName("a:xfrm")[0] ||
+                       node.getElementsByTagName("a:xfrm")[0];
+          if (!xfrm) return null;
+
+          const off = xfrm.getElementsByTagName("a:off")[0];
+          const extNodes = Array.from(xfrm.getElementsByTagName("a:ext"));
+          const ext = extNodes.find((e) => e.hasAttribute("cx")) || extNodes[0];
+
           if (!off || !ext) return null;
+
           const ox = parseInt(off.getAttribute("x") || "0", 10);
           const oy = parseInt(off.getAttribute("y") || "0", 10);
           const cx = parseInt(ext.getAttribute("cx") || "0", 10);
           const cy = parseInt(ext.getAttribute("cy") || "0", 10);
+
+          if (cx <= 0 && cy <= 0) return null;
+
+          let finalX = ox * scaleX;
+          let finalY = oy * scaleY;
+          let finalW = cx * scaleX;
+          let finalH = cy * scaleY;
+
+          if (parentGroup) {
+            finalX = parentGroup.x + finalX * parentGroup.scaleX;
+            finalY = parentGroup.y + finalY * parentGroup.scaleY;
+            finalW = finalW * parentGroup.scaleX;
+            finalH = finalH * parentGroup.scaleY;
+          }
+
           return {
-            x: ox * scaleX,
-            y: oy * scaleY,
-            w: cx * scaleX,
-            h: cy * scaleY,
+            x: finalX,
+            y: finalY,
+            w: finalW,
+            h: finalH,
           };
         };
 
-        // Helper to wrap text within width
+        // Helper to wrap text with multi-word line support (preventing 1-word-per-line wrapping)
         const wrapText = (
           text: string,
           maxWidth: number,
           font: string
         ): string[] => {
           ctx.font = font;
-          const words = text.split(/\s+/);
+          const words = text.split(/\s+/).filter(Boolean);
+          if (words.length === 0) return [];
           const lines: string[] = [];
-          let currentLine = words[0] || "";
+          let currentLine = words[0];
 
           for (let w = 1; w < words.length; w++) {
             const word = words[w];
             const testLine = currentLine + " " + word;
             const metrics = ctx.measureText(testLine);
-            if (metrics.width < maxWidth) {
+            if (metrics.width <= maxWidth) {
               currentLine = testLine;
             } else {
               lines.push(currentLine);
@@ -266,207 +331,305 @@ export default function PptToPdfPage() {
           return lines;
         };
 
-        // Render shapes, pictures, and text boxes in visual tree order
-        const spTree = slideDoc.getElementsByTagName("p:spTree")[0];
-        if (spTree) {
-          const children = Array.from(spTree.children);
+        // Track occupied text regions to prevent vertical overlaps
+        const occupiedRegions: { x: number; y: number; w: number; h: number }[] = [];
 
-          for (const child of children) {
-            const tagName = child.tagName.toLowerCase();
+        // Recursive renderer for shapes, pictures, and group shapes
+        const renderNode = (
+          child: Element,
+          parentGroup?: { x: number; y: number; scaleX: number; scaleY: number }
+        ) => {
+          const rawName = child.tagName.toLowerCase();
+          const localName = (child.localName || rawName.split(":").pop() || "").toLowerCase();
 
-            // A. PICTURE (<p:pic>)
-            if (tagName === "p:pic" || child.getElementsByTagName("p:pic")[0]) {
-              const picNode =
-                tagName === "p:pic"
-                  ? child
-                  : child.getElementsByTagName("p:pic")[0];
-              const xfrm = getTransform(picNode);
-              const blip = picNode.getElementsByTagName("a:blip")[0];
-              const rId = blip?.getAttribute("r:embed");
+          // A. GROUP SHAPES (<p:grpSp>)
+          if (localName === "grpsp") {
+            const grpSpPr = child.getElementsByTagName("p:grpSpPr")[0];
+            const xfrm = grpSpPr?.getElementsByTagName("a:xfrm")[0];
+            let nextGroup = parentGroup;
 
-              if (xfrm && rId && loadedImages.has(rId)) {
-                const img = loadedImages.get(rId)!;
-                ctx.drawImage(img, xfrm.x, xfrm.y, xfrm.w, xfrm.h);
+            if (xfrm) {
+              const off = xfrm.getElementsByTagName("a:off")[0];
+              const extNodes = Array.from(xfrm.getElementsByTagName("a:ext"));
+              const ext = extNodes.find((e) => e.hasAttribute("cx")) || extNodes[0];
+              const chOff = xfrm.getElementsByTagName("a:chOff")[0];
+              const chExt = xfrm.getElementsByTagName("a:chExt")[0];
+
+              const ox = parseInt(off?.getAttribute("x") || "0", 10);
+              const oy = parseInt(off?.getAttribute("y") || "0", 10);
+              const cx = parseInt(ext?.getAttribute("cx") || "0", 10);
+              const cy = parseInt(ext?.getAttribute("cy") || "0", 10);
+
+              const chOx = parseInt(chOff?.getAttribute("x") || `${ox}`, 10);
+              const chOy = parseInt(chOff?.getAttribute("y") || `${oy}`, 10);
+              const chCx = parseInt(chExt?.getAttribute("cx") || `${cx}`, 10);
+              const chCy = parseInt(chExt?.getAttribute("cy") || `${cy}`, 10);
+
+              const gScaleX = chCx > 0 ? (cx / chCx) : 1;
+              const gScaleY = chCy > 0 ? (cy / chCy) : 1;
+              const gX = (ox - chOx * gScaleX) * scaleX;
+              const gY = (oy - chOy * gScaleY) * scaleY;
+
+              nextGroup = {
+                x: (parentGroup ? parentGroup.x : 0) + gX,
+                y: (parentGroup ? parentGroup.y : 0) + gY,
+                scaleX: (parentGroup ? parentGroup.scaleX : 1) * gScaleX,
+                scaleY: (parentGroup ? parentGroup.scaleY : 1) * gScaleY,
+              };
+            }
+
+            // Recurse into all child elements of the group
+            const grpChildren = Array.from(child.children);
+            for (const grpChild of grpChildren) {
+              renderNode(grpChild, nextGroup);
+            }
+            return;
+          }
+
+          // B. PICTURE (<p:pic>)
+          if (localName === "pic") {
+            let xfrm = getTransform(child, parentGroup);
+            const blip = child.getElementsByTagName("a:blip")[0];
+            const rId = blip?.getAttribute("r:embed") || blip?.getAttribute("r:link");
+
+            if (rId && loadedImages.has(rId)) {
+              const img = loadedImages.get(rId)!;
+              if (!xfrm || xfrm.w <= 0 || xfrm.h <= 0) {
+                // If picture has no explicit transform, position in upper/center area
+                const aspect = (img.naturalWidth || 4) / (img.naturalHeight || 3);
+                const drawW = Math.min(canvasWidth * 0.7, 800);
+                const drawH = drawW / aspect;
+                xfrm = {
+                  x: (canvasWidth - drawW) / 2,
+                  y: (canvasHeight - drawH) / 2,
+                  w: drawW,
+                  h: drawH,
+                };
+              }
+              ctx.drawImage(img, xfrm.x, xfrm.y, xfrm.w, xfrm.h);
+            }
+            return;
+          }
+
+          // C. SHAPE OR TEXTBOX (<p:sp>)
+          if (localName === "sp") {
+            let xfrm = getTransform(child, parentGroup);
+
+            // Shape background color / fill
+            const spPr = child.getElementsByTagName("p:spPr")[0];
+            if (spPr && xfrm && xfrm.w > 0 && xfrm.h > 0) {
+              const solidFill = spPr.getElementsByTagName("a:solidFill")[0];
+              if (solidFill) {
+                const srgb = solidFill.getElementsByTagName("a:srgbClr")[0];
+                if (srgb && srgb.getAttribute("val")) {
+                  ctx.fillStyle = "#" + srgb.getAttribute("val");
+                  ctx.fillRect(xfrm.x, xfrm.y, xfrm.w, xfrm.h);
+                }
               }
             }
 
-            // B. SHAPE OR TEXTBOX (<p:sp>)
-            else if (
-              tagName === "p:sp" ||
-              child.getElementsByTagName("p:sp")[0]
-            ) {
-              const spNode =
-                tagName === "p:sp"
-                  ? child
-                  : child.getElementsByTagName("p:sp")[0];
-              const xfrm = getTransform(spNode);
-              if (!xfrm) continue;
+            // Text Body
+            const txBody = child.getElementsByTagName("p:txBody")[0];
+            if (txBody) {
+              // If transform is missing or placeholder (cx <= 0), use comfortable full-slide margins
+              if (!xfrm || xfrm.w <= 50) {
+                xfrm = {
+                  x: canvasWidth * 0.08,
+                  y: canvasHeight * 0.12,
+                  w: canvasWidth * 0.84,
+                  h: canvasHeight * 0.76,
+                };
+              }
 
-              // Shape Fill
-              const spPr = spNode.getElementsByTagName("p:spPr")[0];
-              if (spPr) {
-                const solidFill = spPr.getElementsByTagName("a:solidFill")[0];
-                if (solidFill) {
-                  const srgb = solidFill.getElementsByTagName("a:srgbClr")[0];
-                  if (srgb && srgb.getAttribute("val")) {
-                    ctx.fillStyle = "#" + srgb.getAttribute("val");
-                    ctx.fillRect(xfrm.x, xfrm.y, xfrm.w, xfrm.h);
-                  }
+              // Text width: ensure at least 70% of canvas width so sentences never wrap 1 word per line
+              const safeWrapWidth = Math.max(xfrm.w - 32, canvasWidth * 0.7);
+
+              const paragraphs = Array.from(txBody.getElementsByTagName("a:p"));
+              let currentY = xfrm.y + 24;
+
+              // Check for collision with previously rendered shapes at similar position
+              for (const prev of occupiedRegions) {
+                if (
+                  Math.abs(currentY - prev.y) < 32 &&
+                  Math.abs(xfrm.x - prev.x) < 400
+                ) {
+                  currentY = prev.y + prev.h + 16;
                 }
               }
 
-              // Text Body
-              const txBody = spNode.getElementsByTagName("p:txBody")[0];
-              if (txBody) {
-                const paragraphs = Array.from(
-                  txBody.getElementsByTagName("a:p")
-                );
-                let currentY = xfrm.y + 24;
+              const startY = currentY;
 
-                for (const p of paragraphs) {
-                  const pPr = p.getElementsByTagName("a:pPr")[0];
-                  const align = pPr?.getAttribute("algn") || "l";
+              for (const p of paragraphs) {
+                const pPr = p.getElementsByTagName("a:pPr")[0];
+                const align = pPr?.getAttribute("algn") || "l";
 
-                  // Extract text runs with formatting
-                  const runs = Array.from(p.getElementsByTagName("a:r"));
-                  const runTexts: {
-                    text: string;
-                    fontSize: number;
-                    bold: boolean;
-                    color: string;
-                  }[] = [];
+                // Check for bullet formatting
+                const buCharNode = pPr?.getElementsByTagName("a:buChar")[0];
+                const buAutoNode = pPr?.getElementsByTagName("a:buAutoNum")[0];
+                const buNoneNode = pPr?.getElementsByTagName("a:buNone")[0];
+                const hasBullet =
+                  !buNoneNode &&
+                  (buCharNode !== undefined ||
+                    buAutoNode !== undefined ||
+                    pPr?.hasAttribute("lvl"));
+                const bulletChar = buCharNode?.getAttribute("char") || "•";
 
-                  for (const r of runs) {
-                    const t =
-                      r.getElementsByTagName("a:t")[0]?.textContent || "";
-                    if (!t) continue;
+                // Extract text runs
+                const runs = Array.from(p.getElementsByTagName("a:r"));
+                const runTexts: {
+                  text: string;
+                  fontSize: number;
+                  bold: boolean;
+                  color: string;
+                }[] = [];
 
-                    const rPr = r.getElementsByTagName("a:rPr")[0];
-                    const sz = parseInt(rPr?.getAttribute("sz") || "1800", 10);
-                    // Convert hundredths of pt to canvas px relative to Full HD
-                    const fontSize = Math.max(
-                      14,
-                      Math.round((sz / 100) * (canvasHeight / 540) * 0.95)
-                    );
-                    const bold = rPr?.getAttribute("b") === "1";
+                for (const r of runs) {
+                  const t = r.getElementsByTagName("a:t")[0]?.textContent || "";
+                  if (!t) continue;
 
-                    let color = "#1e293b";
-                    const srgb = rPr?.getElementsByTagName("a:srgbClr")[0];
-                    if (srgb && srgb.getAttribute("val")) {
-                      color = "#" + srgb.getAttribute("val");
-                    }
+                  const rPr = r.getElementsByTagName("a:rPr")[0];
+                  const sz = parseInt(rPr?.getAttribute("sz") || "1800", 10);
+                  // Scale font size proportionally for crisp readability
+                  const fontSize = Math.max(
+                    18,
+                    Math.min(48, Math.round((sz / 100) * 1.5))
+                  );
+                  const bold = rPr?.getAttribute("b") === "1";
 
-                    runTexts.push({ text: t, fontSize, bold, color });
+                  let color = "#1e293b";
+                  const srgb = rPr?.getElementsByTagName("a:srgbClr")[0];
+                  if (srgb && srgb.getAttribute("val")) {
+                    color = "#" + srgb.getAttribute("val");
                   }
 
-                  // Handle plain paragraphs without <a:r> tags
-                  if (runTexts.length === 0) {
-                    const allText = Array.from(
-                      p.getElementsByTagName("a:t")
+                  runTexts.push({ text: t, fontSize, bold, color });
+                }
+
+                // Fallback for text directly under <a:p> without <a:r>
+                if (runTexts.length === 0) {
+                  const allText = Array.from(p.getElementsByTagName("a:t"))
+                    .map((t) => t.textContent || "")
+                    .join("");
+                  if (allText.trim()) {
+                    runTexts.push({
+                      text: allText,
+                      fontSize: 24,
+                      bold: false,
+                      color: "#1e293b",
+                    });
+                  }
+                }
+
+                if (runTexts.length === 0) {
+                  currentY += 12;
+                  continue;
+                }
+
+                const rawBody = runTexts.map((r) => r.text).join("");
+                if (!rawBody.trim()) continue;
+
+                // Prepend bullet symbol directly onto the line if bullet is active
+                const fullText = (hasBullet ? `${bulletChar}  ` : "") + rawBody;
+                const primaryRun = runTexts[0];
+                const fontStr = `${primaryRun.bold ? "bold " : ""}${
+                  primaryRun.fontSize
+                }px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+
+                const wrapped = wrapText(fullText, safeWrapWidth, fontStr);
+                const lineHeight = Math.round(primaryRun.fontSize * 1.35);
+
+                for (const line of wrapped) {
+                  ctx.font = fontStr;
+                  ctx.fillStyle = primaryRun.color;
+
+                  let startX = xfrm.x + 8;
+                  if (align === "ctr") {
+                    const textWidth = ctx.measureText(line).width;
+                    startX = xfrm.x + (xfrm.w - textWidth) / 2;
+                  } else if (align === "r") {
+                    const textWidth = ctx.measureText(line).width;
+                    startX = xfrm.x + xfrm.w - textWidth - 8;
+                  }
+
+                  ctx.fillText(line, startX, currentY);
+                  currentY += lineHeight;
+                }
+
+                currentY += 10; // Space between paragraphs
+              }
+
+              // Register text block bounding box for vertical collision prevention
+              occupiedRegions.push({
+                x: xfrm.x,
+                y: startY,
+                w: safeWrapWidth,
+                h: currentY - startY,
+              });
+            }
+            return;
+          }
+
+          // D. TABLES & GRAPHIC FRAMES (<p:graphicFrame>)
+          if (localName === "graphicframe") {
+            const xfrm = getTransform(child, parentGroup);
+            const tbl = child.getElementsByTagName("a:tbl")[0];
+
+            if (xfrm && tbl) {
+              const rows = Array.from(tbl.getElementsByTagName("a:tr"));
+              if (rows.length > 0) {
+                const rowHeight = Math.max(xfrm.h / rows.length, 36);
+
+                for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+                  const cells = Array.from(
+                    rows[rIdx].getElementsByTagName("a:tc")
+                  );
+                  const colWidth = xfrm.w / (cells.length || 1);
+
+                  for (let cIdx = 0; cIdx < cells.length; cIdx++) {
+                    const cellX = xfrm.x + cIdx * colWidth;
+                    const cellY = xfrm.y + rIdx * rowHeight;
+
+                    // Cell fill
+                    ctx.fillStyle =
+                      rIdx === 0 ? "rgba(217, 119, 6, 0.15)" : "#f8fafc";
+                    ctx.fillRect(cellX, cellY, colWidth, rowHeight);
+
+                    // Cell border
+                    ctx.strokeStyle = "#cbd5e1";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(cellX, cellY, colWidth, rowHeight);
+
+                    // Cell text
+                    const text = Array.from(
+                      cells[cIdx].getElementsByTagName("a:t")
                     )
                       .map((t) => t.textContent || "")
-                      .join("");
-                    if (allText.trim()) {
-                      runTexts.push({
-                        text: allText,
-                        fontSize: 22,
-                        bold: false,
-                        color: "#1e293b",
-                      });
-                    }
-                  }
+                      .join(" ")
+                      .trim();
 
-                  if (runTexts.length === 0) {
-                    currentY += 16;
-                    continue;
-                  }
-
-                  // Render text lines
-                  const fullText = runTexts.map((r) => r.text).join("");
-                  const primaryRun = runTexts[0];
-                  const fontStr = `${primaryRun.bold ? "bold " : ""}${
-                    primaryRun.fontSize
-                  }px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-
-                  const wrapped = wrapText(fullText, xfrm.w - 16, fontStr);
-                  const lineHeight = Math.round(primaryRun.fontSize * 1.35);
-
-                  for (const line of wrapped) {
-                    ctx.font = fontStr;
-                    ctx.fillStyle = primaryRun.color;
-
-                    let startX = xfrm.x + 8;
-                    if (align === "ctr") {
-                      const textWidth = ctx.measureText(line).width;
-                      startX = xfrm.x + (xfrm.w - textWidth) / 2;
-                    } else if (align === "r") {
-                      const textWidth = ctx.measureText(line).width;
-                      startX = xfrm.x + xfrm.w - textWidth - 8;
-                    }
-
-                    ctx.fillText(line, startX, currentY);
-                    currentY += lineHeight;
-                  }
-
-                  currentY += 8; // Paragraph spacing
-                }
-              }
-            }
-
-            // C. TABLES & GRAPHICS (<p:graphicFrame>)
-            else if (tagName === "p:graphicFrame") {
-              const xfrm = getTransform(child);
-              const tbl = child.getElementsByTagName("a:tbl")[0];
-
-              if (xfrm && tbl) {
-                const rows = Array.from(tbl.getElementsByTagName("a:tr"));
-                if (rows.length > 0) {
-                  const rowHeight = xfrm.h / rows.length;
-
-                  for (let rIdx = 0; rIdx < rows.length; rIdx++) {
-                    const cells = Array.from(
-                      rows[rIdx].getElementsByTagName("a:tc")
-                    );
-                    const colWidth = xfrm.w / (cells.length || 1);
-
-                    for (let cIdx = 0; cIdx < cells.length; cIdx++) {
-                      const cellX = xfrm.x + cIdx * colWidth;
-                      const cellY = xfrm.y + rIdx * rowHeight;
-
-                      // Cell background
-                      ctx.fillStyle =
-                        rIdx === 0 ? "rgba(217, 119, 6, 0.15)" : "#f8fafc";
-                      ctx.fillRect(cellX, cellY, colWidth, rowHeight);
-
-                      // Cell border
-                      ctx.strokeStyle = "#cbd5e1";
-                      ctx.lineWidth = 1;
-                      ctx.strokeRect(cellX, cellY, colWidth, rowHeight);
-
-                      // Cell text
-                      const text = Array.from(
-                        cells[cIdx].getElementsByTagName("a:t")
-                      )
-                        .map((t) => t.textContent || "")
-                        .join(" ")
-                        .trim();
-
-                      if (text) {
-                        ctx.fillStyle = "#1e293b";
-                        ctx.font = `${rIdx === 0 ? "bold " : ""}14px sans-serif`;
-                        ctx.fillText(
-                          text.length > 30
-                            ? text.slice(0, 27) + "..."
-                            : text,
-                          cellX + 6,
-                          cellY + rowHeight / 2 + 5
-                        );
-                      }
+                    if (text) {
+                      ctx.fillStyle = "#1e293b";
+                      ctx.font = `${rIdx === 0 ? "bold " : ""}18px sans-serif`;
+                      ctx.fillText(
+                        text.length > 40 ? text.slice(0, 37) + "..." : text,
+                        cellX + 10,
+                        cellY + rowHeight / 2 + 6
+                      );
                     }
                   }
                 }
               }
             }
+            return;
+          }
+        };
+
+        // Render all elements in the slide shape tree (<p:spTree>)
+        const spTree = slideDoc.getElementsByTagName("p:spTree")[0];
+        if (spTree) {
+          const topElements = Array.from(spTree.children);
+          for (const el of topElements) {
+            renderNode(el);
           }
         }
 
